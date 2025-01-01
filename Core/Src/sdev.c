@@ -79,8 +79,8 @@ const struct co_sdev lpc17xx_sdev = {
 			.type = CO_DEFTYPE_UNSIGNED16,
 			.min = { .u16 = CO_UNSIGNED16_MIN },
 			.max = { .u16 = CO_UNSIGNED16_MAX },
-			.def = { .u16 = 0x0032u },
-			.val = { .u16 = 0x0032u },
+			.def = { .u16 = 0x00C8u },
+			.val = { .u16 = 0x00C8u },
 			.access = CO_ACCESS_RW,
 			.pdo_mapping = 0,
 			.flags = 0

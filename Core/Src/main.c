@@ -53,6 +53,8 @@ FDCAN_HandleTypeDef hfdcan1;
 
 RTC_HandleTypeDef hrtc;
 
+TIM_HandleTypeDef htim7;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -63,6 +65,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_RTC_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_TIM7_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 int can_recv(struct can_msg *ptr, size_t n);
@@ -82,6 +85,52 @@ extern const struct co_sdev lpc17xx_sdev;
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+int ticks = 0,ticks_ms=0,ticks_second=0,ticks_minute=0,ticks_hour=0;
+
+void
+HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
+/* Update System Time
+ * A tick is generated every ns
+ */
+//	HAL_GPIO_TogglePin(DBG_GPIO_Port, DBG_Pin);
+	const int ticks_per_ms = 1000*1000;
+	const int ticks_per_second = 1000;
+	const int ticks_per_minute = 60;
+	const int ticks_per_hour= 60;
+
+	ticks++;
+	ticks_ms = ticks;
+/*
+	if(ticks >= ticks_per_ms){
+		ticks_ms++;
+		ticks = 0;
+	}
+*/
+	if(ticks_ms >= ticks_per_second){
+		ticks_second++;
+		ticks_ms=0;
+		ticks = 0;
+	}
+	if(ticks_second >= ticks_per_minute){
+		ticks_minute++;
+		ticks_second=0;
+	}
+	if(ticks_minute >= ticks_per_hour){
+		ticks_hour++;
+		ticks_second=0;
+	}
+}
+
+struct hw_time clock_get_hw_time()
+{
+struct hw_time tm;
+tm.ticks_hour = ticks_hour;
+tm.ticks_minute =ticks_minute;
+tm.ticks_second = ticks_second;
+tm.ticks_ms = ticks_ms;
+tm.ticks_ns = ticks_ms * 1000* 1000;
+return tm;
+}
 
 /* USER CODE END 0 */
 
@@ -116,9 +165,10 @@ int main(void)
   MX_GPIO_Init();
   MX_RTC_Init();
   MX_FDCAN1_Init();
+  MX_TIM7_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_TIM_Base_Start_IT(&htim7);
   /* USER CODE END 2 */
 
   /* Initialize led */
@@ -128,19 +178,34 @@ int main(void)
   BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
   /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
- /*
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
-  {
-    Error_Handler();
-  }
-*/
-  /* USER CODE BEGIN BSP */
 
+
+  /* USER CODE BEGIN BSP */
+  /* Set CAN Filter, otherwise all messages will be filtered out */
+
+  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
+                                   FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE)
+      != HAL_OK) {
+      return -1;
+  }
+
+  if (HAL_FDCAN_ActivateNotification(&hfdcan1,
+                                     0 | FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_NEW_MESSAGE
+                                         | FDCAN_IT_TX_COMPLETE | FDCAN_IT_TX_FIFO_EMPTY | FDCAN_IT_BUS_OFF
+                                         | FDCAN_IT_ARB_PROTOCOL_ERROR | FDCAN_IT_DATA_PROTOCOL_ERROR
+                                         | FDCAN_IT_ERROR_PASSIVE | FDCAN_IT_ERROR_WARNING,
+                                     0xFFFFFFFF)
+      != HAL_OK) {
+      return -1;
+  }
+
+  /* Put CAN module in normal mode */
+      if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
+      {
+    	  return -1;
+      }
+
+   /* Start RTC, otherwise CANOpen won't generate Data */
   /* -- Sample board code to send message over COM1 port ---- */
   //printf("Welcome to STM32 world !\n\r");
   const char* buf = "\033c Welcome to lely tester!\n\r";
@@ -188,7 +253,7 @@ int main(void)
 	co_sub_set_up_ind(co_dev_find_sub(dev, 0x2001, 0x00), &on_up_2001_00,
 			NULL);
 
-
+//	co_nmt_hb_set_st(hb, st);
   /* USER CODE END BSP */
 
   /* Infinite loop */
@@ -211,7 +276,39 @@ int main(void)
     /* USER CODE BEGIN 3 */
 	// Update the CAN network clock.
 	clock_gettime(1, &now);
-//	can_net_set_time(net, &now);
+
+	struct tm *tm_info;
+    char buffer[20];
+
+    // Aktuelle Zeit holen
+    tm_info = localtime(&now.tv_sec);
+
+    // Zeit formatieren: hh:mm:ss:ms
+    sprintf(buffer, "%02d:%02d:%02d:%03ld",
+            tm_info->tm_hour,
+            tm_info->tm_min,
+            tm_info->tm_sec,
+            now.tv_nsec / 1000000); // Nanosekunden in Millisekunden umwandeln
+
+    // Ausgabe
+//    trace("Aktuelle Uhrzeit: %s\n", buffer);
+    RTC_DateTypeDef gDate;
+      RTC_TimeTypeDef gTime;
+
+      /* Get the RTC current Time */
+      HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+      /* Get the RTC current Date */
+      HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+
+      /* Display time Format: hh:mm:ss */
+      trace("%02d:%02d:%02d",gTime.Hours, gTime.Minutes, gTime.Seconds);
+
+      /* Display date Format: dd-mm-yyyy */
+      //sprintf((char*)date,"%02d-%02d-%2d",gDate.Date, gDate.Month, 2000 + gDate.Year);
+      HAL_Delay(500);
+      //trace("%s",time);
+
+	can_net_set_time(net, &now);
 
 	// Process any received CAN frames.
 	struct can_msg msg;
@@ -219,7 +316,13 @@ int main(void)
 		can_net_recv(net, &msg);
 
 	// TODO: Update object dictionary.
-
+/*
+	struct can_msg heartbeat;
+	heartbeat.id = 0x702;
+	heartbeat.flags = 0;
+	heartbeat.len = 1;
+	can_send(&heartbeat, 0);
+*/
   }
 	co_nmt_destroy(nmt);
 	co_dev_destroy(dev);
@@ -241,13 +344,18 @@ void SystemClock_Config(void)
   */
   HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
 
+  /** Configure LSE Drive Capability
+  */
+  HAL_PWR_EnableBkUpAccess();
+  __HAL_RCC_LSEDRIVE_CONFIG(RCC_LSEDRIVE_LOW);
+
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSE;
+  RCC_OscInitStruct.LSEState = RCC_LSE_ON;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
@@ -392,6 +500,44 @@ static void MX_RTC_Init(void)
 }
 
 /**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 32;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 1000;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -446,6 +592,7 @@ static void MX_USART2_UART_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 /* USER CODE BEGIN MX_GPIO_Init_1 */
 /* USER CODE END MX_GPIO_Init_1 */
 
@@ -454,6 +601,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(DBG_GPIO_Port, DBG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : DBG_Pin */
+  GPIO_InitStruct.Pin = DBG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(DBG_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -479,22 +636,53 @@ int can_recv(struct can_msg *ptr, size_t n)
 
 int can_send(const struct can_msg *msg, void *data)
 {
+const uint16_t CANID_MASK = 0x07FF;
 	FDCAN_TxHeaderTypeDef pTxHeader;
 	pTxHeader.BitRateSwitch = FDCAN_BRS_OFF;
 	pTxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
 	pTxHeader.FDFormat = FDCAN_CLASSIC_CAN;
 	pTxHeader.IdType = FDCAN_STANDARD_ID;
 	pTxHeader.MessageMarker = 0;
-					pTxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-							pTxHeader.TxFrameType = msg->flags;
+	pTxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+	pTxHeader.TxFrameType = msg->flags;
 
-	pTxHeader.Identifier = msg->id;
-	pTxHeader.DataLength = msg->len;
+	pTxHeader.Identifier = msg->id & CANID_MASK;
+
+    switch (msg->len) {
+        case 0:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_0;
+            break;
+        case 1:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_1;
+            break;
+        case 2:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_2;
+            break;
+        case 3:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_3;
+            break;
+        case 4:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_4;
+            break;
+        case 5:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_5;
+            break;
+        case 6:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_6;
+            break;
+        case 7:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_7;
+            break;
+        case 8:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_8;
+            break;
+        default: /* Hard error... */
+            break;
+    }
 
     // Prüfen, ob die Daten nicht NULL sind
     if (data == NULL) {
         printf("Keine Daten zum Drucken.\n");
-        return -1;  // Fehler: keine Daten
     }
 
     // Daten als unsigned char* interpretieren
@@ -516,7 +704,7 @@ int can_send(const struct can_msg *msg, void *data)
     sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
 
 
-	trace("sending CAN-Frame: %s", data_str);
+//	trace("sending CAN-Frame: %s", data_str);
 
 //    tx_hdr.TxFrameType = (buffer->ident & FLAG_RTR) ? FDCAN_REMOTE_FRAME : FDCAN_DATA_FRAME;
 //    tx_hdr.BitRateSwitch = FDCAN_BRS_OFF;
@@ -524,7 +712,10 @@ int can_send(const struct can_msg *msg, void *data)
 //    tx_hdr.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
 //    tx_hdr.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
 
-	return HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &pTxHeader, data);
+	int e =  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &pTxHeader, data);
+	if(e != HAL_OK){
+trace ("failed sending CAN-Frame");
+	}
 }
 static int
 on_can_send(const struct can_msg *msg, void *data)
@@ -654,6 +845,7 @@ void BSP_PB_Callback(Button_TypeDef Button)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+	trace("ERROR:Program enterred Error_Handler!");
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)

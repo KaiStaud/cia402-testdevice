@@ -56,6 +56,16 @@ extern UART_HandleTypeDef huart2;
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+struct hw_time{
+	int ticks_ns;
+	int ticks_ms;
+	int ticks_second;
+	int ticks_minute;
+	int ticks_hour;
+};
+
+struct hw_time clock_get_hw_time();
+
 
 /* USER CODE END EFP */
 
@@ -74,6 +84,8 @@ void Error_Handler(void);
 #define T_SWCLK_GPIO_Port GPIOA
 #define T_SWO_Pin GPIO_PIN_3
 #define T_SWO_GPIO_Port GPIOB
+#define DBG_Pin GPIO_PIN_8
+#define DBG_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

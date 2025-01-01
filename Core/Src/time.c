@@ -1,6 +1,7 @@
 #include <lely/libc/time.h>
 #include <stm32g4xx_hal.h>
 #include <stdint.h>
+#include <main.h>
 RTC_HandleTypeDef sys_rtc;
 uint32_t rtc_format;
 /* @param  Format Specifies the format of the entered parameters.
@@ -15,10 +16,15 @@ rtc_format = p_format;
 }
 int clock_gettime(clockid_t clock_id, struct timespec *tp)
 {
+/*
 	RTC_TimeTypeDef sTime;
 	HAL_RTC_GetTime(&sys_rtc, &sTime, rtc_format);
 	tp->tv_nsec = (sTime.SubSeconds * 1000000000UL) / (sTime.SecondFraction + 1);;
 	tp->tv_sec = sTime.Seconds;
+*/
+	struct hw_time t = clock_get_hw_time();
+	tp->tv_nsec = t.ticks_ns;
+	tp->tv_sec = t.ticks_second;
 }
 
 int clock_settime(clockid_t clock_id, const struct timespec *tp)
