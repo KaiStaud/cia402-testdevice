@@ -177,9 +177,6 @@ int main(void)
   /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
   BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
-
-
   /* USER CODE BEGIN BSP */
   /* Set CAN Filter, otherwise all messages will be filtered out */
 
