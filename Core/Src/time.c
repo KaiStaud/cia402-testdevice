@@ -23,8 +23,12 @@ int clock_gettime(clockid_t clock_id, struct timespec *tp)
 	tp->tv_sec = sTime.Seconds;
 */
 	struct hw_time t = clock_get_hw_time();
-	tp->tv_nsec = t.ticks_ns;
-	tp->tv_sec = t.ticks_second;
+    RTC_TimeTypeDef gTime;
+	HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+	//tp->tv_nsec = t.ticks_ns;
+	tp->tv_sec = gTime.Seconds;
+	tp->tv_nsec = (gTime.SubSeconds * 1000000000UL) / (gTime.SecondFraction + 1);
+return 0;
 }
 
 int clock_settime(clockid_t clock_id, const struct timespec *tp)

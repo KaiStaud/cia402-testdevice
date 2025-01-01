@@ -281,29 +281,20 @@ int main(void)
     tm_info = localtime(&now.tv_sec);
 
     // Zeit formatieren: hh:mm:ss:ms
+/*
     sprintf(buffer, "%02d:%02d:%02d:%03ld",
             tm_info->tm_hour,
             tm_info->tm_min,
             tm_info->tm_sec,
             now.tv_nsec / 1000000); // Nanosekunden in Millisekunden umwandeln
+*/
 
-    // Ausgabe
-//    trace("Aktuelle Uhrzeit: %s\n", buffer);
     RTC_DateTypeDef gDate;
-      RTC_TimeTypeDef gTime;
-
-      /* Get the RTC current Time */
-      HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
-      /* Get the RTC current Date */
-      HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
-
-      /* Display time Format: hh:mm:ss */
-      trace("%02d:%02d:%02d",gTime.Hours, gTime.Minutes, gTime.Seconds);
-
-      /* Display date Format: dd-mm-yyyy */
-      //sprintf((char*)date,"%02d-%02d-%2d",gDate.Date, gDate.Month, 2000 + gDate.Year);
-      HAL_Delay(500);
-      //trace("%s",time);
+    RTC_TimeTypeDef gTime;
+    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+    //Display time Format: hh:mm:ss
+    //trace("%02d:%02d:%02d",gTime.Hours, gTime.Minutes, gTime.Seconds);
 
 	can_net_set_time(net, &now);
 
@@ -711,7 +702,12 @@ const uint16_t CANID_MASK = 0x07FF;
 
 	int e =  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &pTxHeader, data);
 	if(e != HAL_OK){
-trace ("failed sending CAN-Frame");
+	    RTC_DateTypeDef gDate;
+	    RTC_TimeTypeDef gTime;
+	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+	    //Display time Format: hh:mm:ss
+	    trace("[ %02d:%02d:%02d ] failed sending CAN-Frame",gTime.Hours, gTime.Minutes, gTime.Seconds);
 	}
 }
 static int
