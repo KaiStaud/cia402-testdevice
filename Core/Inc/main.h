@@ -90,8 +90,6 @@ struct hw_time clock_get_hw_time();
 #define LCD_RST_GPIO_Port GPIOB
 #define LCD_CS_Pin GPIO_PIN_5
 #define LCD_CS_GPIO_Port GPIOB
-#define DBG_Pin GPIO_PIN_8
-#define DBG_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

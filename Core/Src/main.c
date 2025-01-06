@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -66,7 +65,6 @@ TIM_HandleTypeDef htim7;
 
 UART_HandleTypeDef huart2;
 
-osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 #ifdef USE_LVGL
 osThreadId LvglTaskHandle;
@@ -84,8 +82,6 @@ static void MX_FDCAN1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
-void StartDefaultTask(void const * argument);
-
 /* USER CODE BEGIN PFP */
 int can_recv(struct can_msg *ptr, size_t n);
 
@@ -145,7 +141,10 @@ tm.ticks_ms = ticks_ms;
 tm.ticks_ns = ticks_ms * 1000* 1000;
 return tm;
 }
-
+struct timespec now = { 0, 0 };
+co_dev_t *dev;
+co_nmt_t *nmt;
+can_net_t *net;
 /* USER CODE END 0 */
 
 /**
@@ -187,48 +186,8 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim7);
   /* USER CODE END 2 */
 
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-//  osThreadDef(LvglTask, LVGL_Task, osPriorityIdle, 0, 128);
-//  LvglTaskHandle = osThreadCreate(osThread(LvglTask), NULL);
-  /* USER CODE END RTOS_THREADS */
-
   /* Initialize led */
   BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
-
-  /* Initialize COM1 port (115200, 8 bits (7-bit data + 1 stop bit), no parity */
-  BspCOMInit.BaudRate   = 115200;
-  BspCOMInit.WordLength = COM_WORDLENGTH_8B;
-  BspCOMInit.StopBits   = COM_STOPBITS_1;
-  BspCOMInit.Parity     = COM_PARITY_NONE;
-  BspCOMInit.HwFlowCtl  = COM_HWCONTROL_NONE;
-  if (BSP_COM_Init(COM1, &BspCOMInit) != BSP_ERROR_NONE)
-  {
-    Error_Handler();
-  }
 
   /* USER CODE BEGIN BSP */
   /* Set CAN Filter, otherwise all messages will be filtered out */
@@ -265,22 +224,22 @@ int main(void)
   BSP_LED_On(LED_GREEN);
 
 	// Initialize the CAN network interface.
-	can_net_t *net = can_net_create();
+	net = can_net_create();
 	assert(net);
 	can_net_set_send_func(net, &on_can_send, NULL);
 
 	// Initialize the CAN network clock. We use the monotonic clock, since
 	// its reference will not be changed by clock_settime().
-	struct timespec now = { 0, 0 };
+//	struct timespec now = { 0, 0 };
 	clock_gettime(1, &now);
 	can_net_set_time(net, &now);
 
 	// Create a dynamic object dictionary from the static object dictionary.
-	co_dev_t *dev = co_dev_create_from_sdev(&lpc17xx_sdev);
+	dev = co_dev_create_from_sdev(&lpc17xx_sdev);
 	assert(dev);
 
 	// Create the CANopen NMT service.
-	co_nmt_t *nmt = co_nmt_create(net, dev);
+	nmt = co_nmt_create(net, dev);
 	assert(nmt);
 
 	// Start the NMT service by resetting the node.
@@ -306,11 +265,6 @@ int main(void)
 
 
   /* USER CODE END BSP */
-
-  /* Start scheduler */
-  osKernelStart();
-
-  /* We should never get here as control is now taken by the scheduler */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
@@ -359,9 +313,29 @@ int main(void)
 
 	// Process any received CAN frames.
 	struct can_msg msg;
-	while (can_recv(&msg, 1))
-		can_net_recv(net, &msg);
+	while (1/*can_recv(&msg, 1)*/)
 
+	{int n_frames = can_recv(&msg, 1);
+		if(n_frames !=0)
+		{
+		    // Puffer für die formatierte Ausgabe
+		    char data_str[256]; // Angenommene Puffergröße, die groß genug ist
+		    int offset = 0;
+
+		    // Formatieren der Daten in den String
+		    offset += sprintf(data_str + offset, "  ID: 0x%X", msg.id);
+		    offset += sprintf(data_str + offset, "  Length: %d", msg.len);
+		    offset += sprintf(data_str + offset, "  Flags: 0x%X\r\n", msg.flags);
+
+		    offset += sprintf(data_str + offset, "  Data: [ ");
+		    for (unsigned int i = 0; i < msg.len; ++i) {
+		        offset += sprintf(data_str + offset, "%02X ", msg.data[i]); // Ausgabe der Daten im Hex-Format
+		    }
+		    sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
+			trace("Received frame from %s ",data_str);
+			can_net_recv(net, &msg);
+		}
+	}
 	// TODO: Update object dictionary.
 /*
 	struct can_msg heartbeat;
@@ -448,7 +422,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_EXTERNAL_LOOPBACK;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -684,7 +658,7 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 5, 0);
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 
 }
@@ -710,7 +684,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LCD_DCX_Pin|LCD_RST_Pin|LCD_CS_Pin|DBG_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LCD_DCX_Pin|LCD_RST_Pin|LCD_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : SD_CS_Pin */
   GPIO_InitStruct.Pin = SD_CS_Pin;
@@ -725,13 +699,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : DBG_Pin */
-  GPIO_InitStruct.Pin = DBG_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  HAL_GPIO_Init(DBG_GPIO_Port, &GPIO_InitStruct);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -1091,24 +1058,6 @@ void ui_init_manual(lv_display_t *disp)
 }
 #endif
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
-{
-  /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
-  /* USER CODE END 5 */
-}
 
 /**
   * @brief  Period elapsed callback in non blocking mode

@@ -12,7 +12,7 @@ const struct co_sdev lpc17xx_sdev = {
 	.revision = 0x00000000,
 	.order_code = NULL,
 	.baud = 0
-		| CO_BAUD_125,
+		| CO_BAUD_1000,
 	.rate = 0,
 	.lss = 0,
 	.dummy = 0x000000fe,
@@ -79,8 +79,8 @@ const struct co_sdev lpc17xx_sdev = {
 			.type = CO_DEFTYPE_UNSIGNED16,
 			.min = { .u16 = CO_UNSIGNED16_MIN },
 			.max = { .u16 = CO_UNSIGNED16_MAX },
-			.def = { .u16 = 0x00C8u },
-			.val = { .u16 = 0x00C8u },
+			.def = { .u16 = 0x0000 },
+			.val = { .u16 = 0x0000 },
 			.access = CO_ACCESS_RW,
 			.pdo_mapping = 0,
 			.flags = 0
