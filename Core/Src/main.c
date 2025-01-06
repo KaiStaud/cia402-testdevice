@@ -40,9 +40,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LCD_H_RES       240
-#define LCD_V_RES       240
-#define BUS_SPI1_POLL_TIMEOUT 0x1000U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -66,11 +63,6 @@ TIM_HandleTypeDef htim7;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-#ifdef USE_LVGL
-osThreadId LvglTaskHandle;
-lv_display_t *lcd_disp;
-volatile int lcd_bus_busy = 0;
-#endif
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -105,32 +97,7 @@ void LVGL_Task(void const *argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int ticks = 0,ticks_ms=0,ticks_second=0,ticks_minute=0,ticks_hour=0;
-/*
-void
-HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim) {
-//	HAL_GPIO_TogglePin(DBG_GPIO_Port, DBG_Pin);
-	const int ticks_per_ms = 1000*1000;
-	const int ticks_per_second = 1000;
-	const int ticks_per_minute = 60;
-	const int ticks_per_hour= 60;
 
-	ticks++;
-	ticks_ms = ticks;
-	if(ticks_ms >= ticks_per_second){
-		ticks_second++;
-		ticks_ms=0;
-		ticks = 0;
-	}
-	if(ticks_second >= ticks_per_minute){
-		ticks_minute++;
-		ticks_second=0;
-	}
-	if(ticks_minute >= ticks_per_hour){
-		ticks_hour++;
-		ticks_second=0;
-	}
-}
-*/
 struct hw_time clock_get_hw_time()
 {
 struct hw_time tm;
@@ -916,147 +883,6 @@ on_up_2001_00(const co_sub_t *sub, struct co_sdo_req *req, void *data)
 	return ac;
 }
 
-#ifdef USE_LVGL
-void lcd_color_transfer_ready_cb(SPI_HandleTypeDef *hspi)
-{
-        /* CS high */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        lcd_bus_busy = 0;
-        lv_display_flush_ready(lcd_disp);
-}
-
-/* Initialize LCD I/O bus, reset LCD */
-static int32_t lcd_io_init(void)
-{
-        /* Register SPI Tx Complete Callback */
-        HAL_SPI_RegisterCallback(&hspi2, HAL_SPI_TX_COMPLETE_CB_ID, lcd_color_transfer_ready_cb);
-
-        /* reset LCD */
-        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_RESET);
-        HAL_Delay(100);
-        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_SET);
-        HAL_Delay(100);
-
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-
-        return HAL_OK;
-}
-
-/* Platform-specific implementation of the LCD send command function. In general this should use polling transfer. */
-static void lcd_send_cmd(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, const uint8_t *param, size_t param_size)
-{
-        LV_UNUSED(disp);
-        while (lcd_bus_busy);   /* wait until previous transfer is finished */
-        /* Set the SPI in 8-bit mode */
-        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-        HAL_SPI_Init(&hspi2);
-        /* DCX low (command) */
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
-        /* CS low */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
-        /* send command */
-        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
-                /* DCX high (data) */
-                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-                /* for short data blocks we use polling transfer */
-                HAL_SPI_Transmit(&hspi2, (uint8_t *)param, (uint16_t)param_size, BUS_SPI1_POLL_TIMEOUT);
-                /* CS high */
-                HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        }
-}
-
-/* Platform-specific implementation of the LCD send color function. For better performance this should use DMA transfer.
- * In case of a DMA transfer a callback must be installed to notify LVGL about the end of the transfer.
- */
-static void lcd_send_color(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, uint8_t *param, size_t param_size)
-{
-        LV_UNUSED(disp);
-        while (lcd_bus_busy);   /* wait until previous transfer is finished */
-        /* Set the SPI in 8-bit mode */
-        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-        HAL_SPI_Init(&hspi2);
-        /* DCX low (command) */
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
-        /* CS low */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
-        /* send command */
-        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
-                /* DCX high (data) */
-                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-                /* for color data use DMA transfer */
-                /* Set the SPI in 16-bit mode to match endianness */
-                hspi2.Init.DataSize = SPI_DATASIZE_16BIT;
-                HAL_SPI_Init(&hspi2);
-                lcd_bus_busy = 1;
-                HAL_SPI_Transmit_DMA(&hspi2, param, (uint16_t)param_size / 2);
-                /* NOTE: CS will be reset in the transfer ready callback */
-        }
-}
-
-void LVGL_Task(void const *argument)
-{
-        /* Initialize LVGL */
-        lv_init();
-
-        /* Initialize LCD I/O */
-        if (lcd_io_init() != 0)
-                return;
-
-        /* Create the LVGL display object and the LCD display driver */
-        lcd_disp = lv_st7789_create(LCD_H_RES, LCD_V_RES, LV_LCD_FLAG_NONE, lcd_send_cmd, lcd_send_color);
-        lv_display_set_rotation(lcd_disp, LV_DISPLAY_ROTATION_0);
-
-        /* Allocate draw buffers on the heap. In this example we use two partial buffers of 1/10th size of the screen */
-        lv_color_t * buf1 = NULL;
-        lv_color_t * buf2 = NULL;
-
-        uint32_t buf_size = LCD_H_RES * LCD_V_RES / 10 * lv_color_format_get_size(lv_display_get_color_format(lcd_disp));
-
-        buf1 = lv_malloc(buf_size);
-        if(buf1 == NULL) {
-                LV_LOG_ERROR("display draw buffer malloc failed");
-                return;
-        }
-
-        buf2 = lv_malloc(buf_size);
-        if(buf2 == NULL) {
-                LV_LOG_ERROR("display buffer malloc failed");
-                lv_free(buf1);
-                return;
-        }
-        lv_display_set_buffers(lcd_disp, buf1, buf2, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
-
-//        ui_init_manual(lcd_disp);
-        ui_init();
-        for(;;) {
-                /* The task running lv_timer_handler should have lower priority than that running `lv_tick_inc` */
-                lv_timer_handler();
-                /* raise the task priority of LVGL and/or reduce the handler period can improve the performance */
-                osDelay(10);
-        }
-}
-
-void ui_init_manual(lv_display_t *disp)
-{
-        lv_obj_t *obj;
-
-        /* set screen background to white */
-        lv_obj_t *scr = lv_screen_active();
-        lv_obj_set_style_bg_color(scr, lv_color_white(), 0);
-        lv_obj_set_style_bg_opa(scr, LV_OPA_100, 0);
-
-        /*Change the active screen's background color*/
-        lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x003a57), LV_PART_MAIN);
-
-        /*Create a white label, set its text and align it to the center*/
-        lv_obj_t * label = lv_label_create(lv_screen_active());
-        lv_label_set_text(label, "Hello world");
-        lv_obj_set_style_text_color(lv_screen_active(), lv_color_hex(0xffffff), LV_PART_MAIN);
-
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-}
-#endif
 /* USER CODE END 4 */
 
 /**
@@ -1076,6 +902,40 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
+  /**
+   * \brief           Rx FIFO 0 callback.
+   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
+   *                      the configuration information for the specified FDCAN.
+   * \param[in]       RxFifo0ITs: indicates which Rx FIFO 0 interrupts are signaled.
+   */
+  void
+  HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo0ITs) {
+      if (RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) {
+      }
+  }
+
+  /**
+   * \brief           Rx FIFO 1 callback.
+   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
+   *                      the configuration information for the specified FDCAN.
+   * \param[in]       RxFifo1ITs: indicates which Rx FIFO 0 interrupts are signaled.
+   */
+  void
+  HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo1ITs) {
+      if (RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) {
+      }
+  }
+
+  /**
+   * \brief           TX buffer has been well transmitted callback
+   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
+   *                      the configuration information for the specified FDCAN.
+   * \param[in]       BufferIndexes: Bits of successfully sent TX buffers
+   */
+  void
+  HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef* hfdcan, uint32_t BufferIndexes) {
+   }
+
 
   /* USER CODE END Callback 1 */
 }
