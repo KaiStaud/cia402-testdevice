@@ -81,6 +81,7 @@
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.objcopy.symbolsrec.254907354" name="MCU Output Converter Motorola S-rec with symbols" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.objcopy.symbolsrec"/>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.679974103.547056264" name="ring_buffer.h" rcbsApplicability="disable" resourcePath="Core/Src/bsp/inc/ring_buffer.h" toolsToInvoke=""/>
 					<sourceEntries>
 						<entry excluding="Src/ui|Src/libnosys/src/times.c|Src/libnosys/src/sbrk.c|Src/util/daemon.c|Src/libnosys/src/exit.c|Src/libc/threads-win32.c|Src/libc/threads-pthread.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry excluding="lely-core|lely-core/src/tap|lely-core/src/io2|lely-core/src/io|lely-core/src/ev|lely-core/src/coapp|lely-core/unit-tests|lely-core/tools|lely-core/test" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>

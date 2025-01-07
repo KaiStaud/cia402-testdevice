@@ -672,6 +672,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/*
 int can_recv(struct can_msg *ptr, size_t n)
 {
 	FDCAN_RxHeaderTypeDef pRxHeader ={};
@@ -679,16 +680,11 @@ int can_recv(struct can_msg *ptr, size_t n)
 	HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &pRxHeader, data);//ptr->data);
 //	trace("received CAN-Frame: ID=%d, %d bytes", pRxHeader->Identifier,pRxHeader->DataLength);
 
-/*
-	ptr->flags = pRxHeader->RxFrameType;
-	ptr->id = pRxHeader->Identifier;
-	ptr->len = pRxHeader->DataLength;
-*/
 	return pRxHeader.DataLength;
 }
+*/
 
-
-
+/*
 int can_send(const struct can_msg *msg, void *data)
 {
 const uint16_t CANID_MASK = 0x07FF;
@@ -731,7 +727,7 @@ const uint16_t CANID_MASK = 0x07FF;
         case 8:
         	pTxHeader.DataLength = FDCAN_DLC_BYTES_8;
             break;
-        default: /* Hard error... */
+        default:
             break;
     }
 
@@ -777,6 +773,7 @@ const uint16_t CANID_MASK = 0x07FF;
 	    trace("[ %02d:%02d:%02d ] failed sending CAN-Frame",gTime.Hours, gTime.Minutes, gTime.Seconds);
 	}
 }
+*/
 static int
 on_can_send(const struct can_msg *msg, void *data)
 {
@@ -902,40 +899,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  /**
-   * \brief           Rx FIFO 0 callback.
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       RxFifo0ITs: indicates which Rx FIFO 0 interrupts are signaled.
-   */
-  void
-  HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo0ITs) {
-      if (RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) {
-      }
-  }
-
-  /**
-   * \brief           Rx FIFO 1 callback.
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       RxFifo1ITs: indicates which Rx FIFO 0 interrupts are signaled.
-   */
-  void
-  HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo1ITs) {
-      if (RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) {
-      }
-  }
-
-  /**
-   * \brief           TX buffer has been well transmitted callback
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       BufferIndexes: Bits of successfully sent TX buffers
-   */
-  void
-  HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef* hfdcan, uint32_t BufferIndexes) {
-   }
-
 
   /* USER CODE END Callback 1 */
 }

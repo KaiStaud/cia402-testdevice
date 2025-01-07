@@ -40,6 +40,7 @@ extern "C" {
 /* USER CODE BEGIN ET */
 extern UART_HandleTypeDef huart2;
 extern RTC_HandleTypeDef hrtc;
+extern FDCAN_HandleTypeDef hfdcan1;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
