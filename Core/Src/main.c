@@ -392,7 +392,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
+  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -833,7 +833,7 @@ on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
 	co_unsigned32_t ac = 0;
 
 	co_unsigned16_t type = co_sub_get_type(sub);//dd
-//	assert(type == CO_DEFTYPE_UNSIGNED32);
+	assert(type == CO_DEFTYPE_UNSIGNED32);
 
 	// This callback is invoked for every SDO CAN frame. Unless the value is
 	// too large to be held in memory (for example, during a firmware
@@ -845,13 +845,14 @@ on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
 		return ac;
 
 	// Check if the value is valid.
-//	if (val.u32 != 42) {
-//		ac = CO_SDO_AC_PARAM;
-	//	goto error;
-//	}
-
+/*
+	if (val.u32 != 42) {
+		ac = CO_SDO_AC_PARAM;
+		goto error;
+	}
+*/
 	// TODO: Do something with val.u32.
-
+	trace("Received SDO 0x2000:0 : val.u32=[%d]",val.u32);
 	// Write the temporary value to the local object dictionary.
 	co_sub_dn(sub, &val);
 error:
