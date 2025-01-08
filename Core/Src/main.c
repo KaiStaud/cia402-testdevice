@@ -28,7 +28,7 @@
 #include <lely/co/sdo.h>
 #include <lely/co/time.h>
 #include "co/co.h"
-
+#include "../bsp/can.h"
 //#include "lvgl.h"
 //#include "./src/drivers/display/st7789/lv_st7789.h"
 /* USER CODE END Includes */
@@ -75,7 +75,6 @@ static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-int can_recv(struct can_msg *ptr, size_t n);
 
 static int on_can_send(const struct can_msg *msg, void *data);
 static void on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data);
@@ -112,6 +111,8 @@ struct timespec now = { 0, 0 };
 co_dev_t *dev;
 co_nmt_t *nmt;
 can_net_t *net;
+
+
 /* USER CODE END 0 */
 
 /**
@@ -151,6 +152,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim7);
+  can_init(125);;
+
   /* USER CODE END 2 */
 
   /* Initialize led */
@@ -389,7 +392,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -679,12 +682,11 @@ int can_recv(struct can_msg *ptr, size_t n)
 	uint8_t* data;
 	HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &pRxHeader, data);//ptr->data);
 //	trace("received CAN-Frame: ID=%d, %d bytes", pRxHeader->Identifier,pRxHeader->DataLength);
-
 	return pRxHeader.DataLength;
 }
 */
 
-/*
+
 int can_send(const struct can_msg *msg, void *data)
 {
 const uint16_t CANID_MASK = 0x07FF;
@@ -727,7 +729,7 @@ const uint16_t CANID_MASK = 0x07FF;
         case 8:
         	pTxHeader.DataLength = FDCAN_DLC_BYTES_8;
             break;
-        default:
+        default: /* Hard error... */
             break;
     }
 
@@ -773,7 +775,6 @@ const uint16_t CANID_MASK = 0x07FF;
 	    trace("[ %02d:%02d:%02d ] failed sending CAN-Frame",gTime.Hours, gTime.Minutes, gTime.Seconds);
 	}
 }
-*/
 static int
 on_can_send(const struct can_msg *msg, void *data)
 {
