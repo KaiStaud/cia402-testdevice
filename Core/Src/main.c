@@ -28,7 +28,7 @@
 #include <lely/co/sdo.h>
 #include <lely/co/time.h>
 #include "co/co.h"
-
+#include "../bsp/can.h"
 //#include "lvgl.h"
 //#include "./src/drivers/display/st7789/lv_st7789.h"
 /* USER CODE END Includes */
@@ -75,7 +75,6 @@ static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-int can_recv(struct can_msg *ptr, size_t n);
 
 static int on_can_send(const struct can_msg *msg, void *data);
 static void on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data);
@@ -112,6 +111,8 @@ struct timespec now = { 0, 0 };
 co_dev_t *dev;
 co_nmt_t *nmt;
 can_net_t *net;
+
+
 /* USER CODE END 0 */
 
 /**
@@ -151,6 +152,8 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim7);
+  can_init(125);;
+
   /* USER CODE END 2 */
 
   /* Initialize led */
@@ -389,7 +392,7 @@ static void MX_FDCAN1_Init(void)
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
   hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
-  hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
+  hfdcan1.Init.Mode = FDCAN_MODE_INTERNAL_LOOPBACK;
   hfdcan1.Init.AutoRetransmission = DISABLE;
   hfdcan1.Init.TransmitPause = DISABLE;
   hfdcan1.Init.ProtocolException = DISABLE;
@@ -672,21 +675,16 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/*
 int can_recv(struct can_msg *ptr, size_t n)
 {
 	FDCAN_RxHeaderTypeDef pRxHeader ={};
 	uint8_t* data;
 	HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &pRxHeader, data);//ptr->data);
 //	trace("received CAN-Frame: ID=%d, %d bytes", pRxHeader->Identifier,pRxHeader->DataLength);
-
-/*
-	ptr->flags = pRxHeader->RxFrameType;
-	ptr->id = pRxHeader->Identifier;
-	ptr->len = pRxHeader->DataLength;
-*/
 	return pRxHeader.DataLength;
 }
-
+*/
 
 
 int can_send(const struct can_msg *msg, void *data)
@@ -902,40 +900,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  /**
-   * \brief           Rx FIFO 0 callback.
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       RxFifo0ITs: indicates which Rx FIFO 0 interrupts are signaled.
-   */
-  void
-  HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo0ITs) {
-      if (RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) {
-      }
-  }
-
-  /**
-   * \brief           Rx FIFO 1 callback.
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       RxFifo1ITs: indicates which Rx FIFO 0 interrupts are signaled.
-   */
-  void
-  HAL_FDCAN_RxFifo1Callback(FDCAN_HandleTypeDef* hfdcan, uint32_t RxFifo1ITs) {
-      if (RxFifo1ITs & FDCAN_IT_RX_FIFO1_NEW_MESSAGE) {
-      }
-  }
-
-  /**
-   * \brief           TX buffer has been well transmitted callback
-   * \param[in]       hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-   *                      the configuration information for the specified FDCAN.
-   * \param[in]       BufferIndexes: Bits of successfully sent TX buffers
-   */
-  void
-  HAL_FDCAN_TxBufferCompleteCallback(FDCAN_HandleTypeDef* hfdcan, uint32_t BufferIndexes) {
-   }
-
 
   /* USER CODE END Callback 1 */
 }
