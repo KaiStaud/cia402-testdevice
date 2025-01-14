@@ -283,9 +283,7 @@ int main(void)
 
 	// Process any received CAN frames.
 	struct can_msg msg;
-	while (1/*can_recv(&msg, 1)*/)
-
-	{int n_frames = can_recv(&msg, 1);
+	int n_frames = can_recv(&msg, 1);
 		if(n_frames !=0)
 		{
 		    // Puffer für die formatierte Ausgabe
@@ -303,9 +301,12 @@ int main(void)
 		    }
 		    sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
 			trace("Received frame from %s ",data_str);
-			can_net_recv(net, &msg);
+			if(can_net_recv(net, &msg) == -1)
+			{
+				trace("can net receive -1");
+			}
 		}
-	}
+
 	// TODO: Update object dictionary.
 /*
 	struct can_msg heartbeat;
@@ -675,108 +676,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/*
-int can_recv(struct can_msg *ptr, size_t n)
-{
-	FDCAN_RxHeaderTypeDef pRxHeader ={};
-	uint8_t* data;
-	HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &pRxHeader, data);//ptr->data);
-//	trace("received CAN-Frame: ID=%d, %d bytes", pRxHeader->Identifier,pRxHeader->DataLength);
-	return pRxHeader.DataLength;
-}
-*/
 
-
-int can_send(const struct can_msg *msg, void *data)
-{
-const uint16_t CANID_MASK = 0x07FF;
-	FDCAN_TxHeaderTypeDef pTxHeader;
-	pTxHeader.BitRateSwitch = FDCAN_BRS_OFF;
-	pTxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-	pTxHeader.FDFormat = FDCAN_CLASSIC_CAN;
-	pTxHeader.IdType = FDCAN_STANDARD_ID;
-	pTxHeader.MessageMarker = 0;
-	pTxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-	pTxHeader.TxFrameType = msg->flags;
-
-	pTxHeader.Identifier = msg->id & CANID_MASK;
-
-    switch (msg->len) {
-        case 0:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_0;
-            break;
-        case 1:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_1;
-            break;
-        case 2:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_2;
-            break;
-        case 3:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_3;
-            break;
-        case 4:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_4;
-            break;
-        case 5:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_5;
-            break;
-        case 6:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_6;
-            break;
-        case 7:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_7;
-            break;
-        case 8:
-        	pTxHeader.DataLength = FDCAN_DLC_BYTES_8;
-            break;
-        default: /* Hard error... */
-            break;
-    }
-
-    // Prüfen, ob die Daten nicht NULL sind
-    if (data == NULL) {
-        printf("Keine Daten zum Drucken.\n");
-    }
-
-    // Daten als unsigned char* interpretieren
-    unsigned char *data_ptr = (unsigned char *)data;
-
-    // Puffer für die formatierte Ausgabe
-    char data_str[256]; // Angenommene Puffergröße, die groß genug ist
-    int offset = 0;
-
-    // Formatieren der Daten in den String
-    offset += sprintf(data_str + offset, "  ID: 0x%X", msg->id);
-    offset += sprintf(data_str + offset, "  Length: %d", msg->len);
-    offset += sprintf(data_str + offset, "  Flags: 0x%X\r\n", msg->flags);
-
-    offset += sprintf(data_str + offset, "  Data: [ ");
-    for (unsigned int i = 0; i < msg->len; ++i) {
-        offset += sprintf(data_str + offset, "%02X ", data_ptr[i]); // Ausgabe der Daten im Hex-Format
-    }
-    sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
-
-
-//	trace("sending CAN-Frame: %s", data_str);
-
-//    tx_hdr.TxFrameType = (buffer->ident & FLAG_RTR) ? FDCAN_REMOTE_FRAME : FDCAN_DATA_FRAME;
-//    tx_hdr.BitRateSwitch = FDCAN_BRS_OFF;
-//    tx_hdr.MessageMarker = 0;
-//    tx_hdr.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-//    tx_hdr.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-
-	int e =  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &pTxHeader, data);
-	if(e != HAL_OK){
-	    RTC_DateTypeDef gDate;
-	    RTC_TimeTypeDef gTime;
-	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
-	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
-	    //Display time Format: hh:mm:ss
-	    trace("[ %02d:%02d:%02d ] failed sending CAN-Frame",gTime.Hours, gTime.Minutes, gTime.Seconds);
-	}
-}
-static int
-on_can_send(const struct can_msg *msg, void *data)
+static int on_can_send(const struct can_msg *msg, void *data)
 {
 	(void)data;
 	return can_send(msg, 1) == 1 ? 0 : -1;

@@ -4,10 +4,15 @@
 #include <stm32g4xx.h>
 #include "main.h"
 #include <lely/util/util.h>
-
+#include "../co/co.h"
 #define CAN_RX_SIZE	16
 #define CAN_TX_SIZE	16
 #define CAN_MSG_MAX_DATA_LEN       (8)
+
+/* CAN masks for identifiers */
+//#define CANID_MASK 0x07FF /*!< CAN standard ID mask */
+#define FLAG_RTR   0x8000 /*!< RTR flag, part of identifier */
+
 
 /** Remote Message */
 #define CAN_REMOTE_MSG         ((uint32_t) (1 << 0))
@@ -31,55 +36,6 @@ static RINGBUFF_T rxring;
 static RINGBUFF_T txring;
 
 static void can_flush(void);
-
-CAN_MSG_T prv_read_can_received_msg(FDCAN_HandleTypeDef* hfdcan, uint32_t fifo, uint32_t fifo_isrs)
-{
-
-	CAN_MSG_T rcvMsg;
-//    CO_CANrx_t* buffer = NULL; /* receive message buffer from CO_CANmodule_t object. */
-//    uint16_t index;            /* index of received message */
-//    uint8_t messageFound = 0;
-
-    static FDCAN_RxHeaderTypeDef rx_hdr;
-    /* Read received message from FIFO */
-    if (HAL_FDCAN_GetRxMessage(hfdcan, fifo, &rx_hdr, rcvMsg.Data) != HAL_OK) {
-        return;
-    }
-    /* Setup identifier (with RTR) and length */
-    rcvMsg.ID = rx_hdr.Identifier | (rx_hdr.RxFrameType == FDCAN_REMOTE_FRAME ? CAN_FLAG_RTR : 0x00);
-    switch (rx_hdr.DataLength) {
-        case FDCAN_DLC_BYTES_0:
-            rcvMsg.DLC = 0;
-            break;
-        case FDCAN_DLC_BYTES_1:
-            rcvMsg.DLC = 1;
-            break;
-        case FDCAN_DLC_BYTES_2:
-            rcvMsg.DLC = 2;
-            break;
-        case FDCAN_DLC_BYTES_3:
-            rcvMsg.DLC = 3;
-            break;
-        case FDCAN_DLC_BYTES_4:
-            rcvMsg.DLC = 4;
-            break;
-        case FDCAN_DLC_BYTES_5:
-            rcvMsg.DLC = 5;
-            break;
-        case FDCAN_DLC_BYTES_6:
-            rcvMsg.DLC = 6;
-            break;
-        case FDCAN_DLC_BYTES_7:
-            rcvMsg.DLC = 7;
-            break;
-        case FDCAN_DLC_BYTES_8:
-            rcvMsg.DLC = 8;
-            break;
-        default:
-            rcvMsg.DLC = 0;
-            break; /* Invalid length when more than 8 */
-    }
-}
 
 /**
  * \brief           Rx FIFO 0 callback.
@@ -111,8 +67,15 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
     }
 	CAN_MSG_T Msg;
 	Msg.DLC = RxHeader.DataLength;
-	Msg.ID = RxHeader.Identifier;
-	//Msg.Type =
+	Msg.ID = RxHeader.Identifier| (RxHeader.RxFrameType == FDCAN_REMOTE_FRAME ? CAN_FLAG_RTR : 0x00);
+
+	if(RxHeader.RxFrameType == FDCAN_REMOTE_FRAME)
+	{
+		Msg.Type = CAN_REMOTE_MSG;
+	}
+	else
+	{
+	}
 	for(int i=0;i<8;i++)
 	{
 	    Msg.Data[i] = RxData[i];
@@ -156,17 +119,140 @@ size_t can_recv(struct can_msg *ptr, size_t n)
 	return i;
 }
 
-static void
-can_flush(void)
+size_t can_send(const struct can_msg *ptr, size_t n)
 {
-	CAN_MSG_T Msg;
+	size_t i = 0;
+	// Disable transmit interrupts to prevent a race condition with
+	// CAN_IRQHandler().
+	//Chip_CAN_DisableInt(LPC_CAN1, CAN_IER_TIE);
+	for (; i < n; i++) {
+		if (ptr[i].len > CAN_MAX_LEN)
+			continue;
 
-	while (RingBuffer_Pop(&txring, &Msg))
+		// Convert the CAN frame to the LPC message format.
+		CAN_MSG_T Msg;
+		if (ptr[i].flags & CAN_FLAG_IDE) {
+			Msg.ID = ptr[i].id & CAN_MASK_EID;
+			Msg.ID |= CAN_EXTEND_ID_USAGE;
+		} else {
+			Msg.ID = ptr[i].id & CAN_MASK_BID;
+		}
+		Msg.Type = (ptr[i].flags & CAN_FLAG_RTR) ? CAN_REMOTE_MSG : 0;
+		Msg.DLC = ptr[i].len;
+		memcpy(Msg.Data, ptr[i].data, ptr[i].len);
+
+		// Try to flush the buffer in a non-blocking way if it is full.
+		if (RingBuffer_IsFull(&txring))
+			can_flush();
+		// Drop remaining messages if the buffer is full.
+		if (!RingBuffer_Insert(&txring, &Msg))
+			break;
+	}
+	// Try to send the messages we just added to the buffer.
+	can_flush();
+	// If any messages remain in the buffer, re-enable transmit interrupts
+	// to let CAN_IRQHandler() handle them.
+	if (!RingBuffer_IsEmpty(&txring))
 	{
-		struct can_msg msg;
-		msg.id = Msg.ID;
-		msg.len = Msg.DLC;
-		prv_can_send(&msg,&Msg.Data);
+//		Chip_CAN_EnableInt(LPC_CAN1, CAN_IER_TIE);
+	}
+	return i;
+}
 
+
+//int can_send(const struct can_msg *msg, size_t n)
+static void can_flush(void)
+{
+	CAN_MSG_T msg;
+
+	while (RingBuffer_Pop(&txring, &msg))
+	{
+	const uint16_t CANID_MASK = 0x07FF;
+	FDCAN_TxHeaderTypeDef pTxHeader;
+	pTxHeader.BitRateSwitch = FDCAN_BRS_OFF;
+	pTxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
+	pTxHeader.FDFormat = FDCAN_CLASSIC_CAN;
+	pTxHeader.IdType = FDCAN_STANDARD_ID;
+	pTxHeader.MessageMarker = 0;
+	pTxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
+	if(msg.Type == CAN_REMOTE_MSG)
+	{
+		pTxHeader.TxFrameType = FDCAN_REMOTE_FRAME;
+	}
+	else
+	{
+		pTxHeader.TxFrameType = FDCAN_DATA_FRAME;
+	}
+//    tx_hdr.Identifier = buffer->ident & CANID_MASK;
+//    tx_hdr.TxFrameType = (buffer->ident & FLAG_RTR) ? FDCAN_REMOTE_FRAME : FDCAN_DATA_FRAME
+	pTxHeader.TxFrameType = //msg->flags;
+
+	pTxHeader.Identifier = msg.ID & CANID_MASK;
+
+    switch (msg.DLC) {
+        case 0:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_0;
+            break;
+        case 1:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_1;
+            break;
+        case 2:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_2;
+            break;
+        case 3:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_3;
+            break;
+        case 4:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_4;
+            break;
+        case 5:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_5;
+            break;
+        case 6:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_6;
+            break;
+        case 7:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_7;
+            break;
+        case 8:
+        	pTxHeader.DataLength = FDCAN_DLC_BYTES_8;
+            break;
+        default: /* Hard error... */
+            break;
+    }
+
+    // Prüfen, ob die Daten nicht NULL sind
+    if (msg.Data == NULL) {
+        printf("Keine Daten zum Drucken.\n");
+    }
+;
+
+    // Puffer für die formatierte Ausgabe
+    char data_str[256]; // Angenommene Puffergröße, die groß genug ist
+    int offset = 0;
+
+    // Formatieren der Daten in den String
+    offset += sprintf(data_str + offset, "  ID: 0x%X", msg.ID);
+    offset += sprintf(data_str + offset, "  Length: %d", msg.DLC);
+    //offset += sprintf(data_str + offset, "  Flags: 0x%X\r\n", msg.);
+
+    offset += sprintf(data_str + offset, "  Data: [ ");
+    for (unsigned int i = 0; i < msg.DLC; ++i) {
+        offset += sprintf(data_str + offset, "%02X ", msg.Data[i]); // Ausgabe der Daten im Hex-Format
+    }
+    sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
+
+
+//	trace("sending CAN-Frame: %s", data_str);
+
+	int e =  HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &pTxHeader, msg.Data);
+	if(e != HAL_OK){
+	    RTC_DateTypeDef gDate;
+	    RTC_TimeTypeDef gTime;
+	    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+	    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+	    //Display time Format: hh:mm:ss
+	    trace("[ %02d:%02d:%02d ] failed sending CAN-Frame",gTime.Hours, gTime.Minutes, gTime.Seconds);
+	}
 	}
 }

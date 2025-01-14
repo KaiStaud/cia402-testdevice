@@ -11,7 +11,7 @@ void can_init(int bitrate);
 void can_fini(void);
 
 size_t can_recv(struct can_msg *ptr, size_t n);
-//size_t can_send(const struct can_msg *ptr, size_t n);
+size_t can_send(const struct can_msg *ptr, size_t n);
 
 #ifdef __cplusplus
 }
