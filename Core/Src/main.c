@@ -21,7 +21,17 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
+#include <stdio.h>
+#include <lely/co/nmt.h>
+#include <lely/co/sdev.h>
+#include <lely/co/sdo.h>
+#include <lely/co/time.h>
+#include <lely/co/co.h>
+#include <lely/bsp/can.h>
 
+#include <lcd/lcd.h>
+#include <ugui/ugui.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +41,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -67,12 +76,22 @@ static void MX_USART2_UART_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
-static void FDCAN_Config(void);
-
+static int on_can_send(const struct can_msg *msg, void *data);
+static void on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data);
+static void on_time(co_time_t *time, const struct timespec *tp, void *data);
+static co_unsigned32_t on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req,void *data);
+static co_unsigned32_t on_up_2001_00(const co_sub_t *sub,struct co_sdo_req *req, void *data);
+static co_unsigned32_t on_dn_6040_00(co_sub_t *sub, struct co_sdo_req *req,void *data);
+static co_unsigned32_t on_up_6041_00(const co_sub_t *sub,struct co_sdo_req *req, void *data);
+extern const struct co_sdev lpc17xx_sdev;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+struct timespec now = { 0, 0 };
+co_dev_t *dev;
+co_nmt_t *nmt;
+can_net_t *net;
 
 /* USER CODE END 0 */
 
@@ -110,8 +129,9 @@ int main(void)
   MX_RTC_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-
-  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
+ //HAL_TIM_Base_Start_IT(&htim7);
+  can_init(125);;
+if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
                                    FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE)
       != HAL_OK) {
       return -1;
@@ -128,56 +148,111 @@ int main(void)
   }
 
   /* Put CAN module in normal mode */
-      if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
-      {
-    	  return -1;
-      }
+    if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
+    {
+      return -1;
+    }
+
+   /* Start RTC, otherwise CANOpen won't generate Data */
+	// Initialize the CAN network interface.
+	net = can_net_create();
+	assert(net);
+	can_net_set_send_func(net, &on_can_send, NULL);
+
+	// Initialize the CAN network clock. 
+//	struct timespec now = { 0, 0 };
+	clock_gettime(1, &now);
+	can_net_set_time(net, &now);
+
+	// Create a dynamic object dictionary from the static object dictionary.
+	dev = co_dev_create_from_sdev(&lpc17xx_sdev);
+	assert(dev);
+
+	// Create the CANopen NMT service.
+	nmt = co_nmt_create(net, dev);
+	assert(nmt);
+
+	// Start the NMT service by resetting the node.
+	co_nmt_cs_ind(nmt, CO_NMT_CS_RESET_NODE);
+
+	// Set the NMT indication function _after_ the initial reset; otherwise
+	// we create a reset loop.
+	co_nmt_set_cs_ind(nmt, &on_nmt_cs, NULL);
+
+	// Set the TIME indication function. This can only be done when the TIME
+	// service is active.
+	co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
+
+	// Set the download (SDO write) indication function for sub-object
+	// 2000:01.
+	co_sub_set_dn_ind(co_dev_find_sub(dev, 0x2000, 0x00), &on_dn_2000_00,
+			NULL);
+
+	// Set the upload (SDO read) indication function for sub-object 2001:01.
+	co_sub_set_up_ind(co_dev_find_sub(dev, 0x2001, 0x00), &on_up_2001_00,
+			NULL);
 
 
-  TxHeader.Identifier = 0x602;
-  TxHeader.TxFrameType =  FDCAN_DATA_FRAME;
-  TxHeader.IdType = FDCAN_STANDARD_ID;
-  TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
-  TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
-  TxHeader.MessageMarker = 0;
-  TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-  TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-  TxHeader.DataLength=FDCAN_DLC_BYTES_8;
+	// Set the download (SDO write) indication function for sub-object
+	// 2000:01.
+	co_sub_set_dn_ind(co_dev_find_sub(dev, 0x6040, 0x00), &on_dn_6040_00,
+			NULL);
+
+	// Set the upload (SDO read) indication function for sub-object 2001:01.
+	co_sub_set_up_ind(co_dev_find_sub(dev, 0x6041, 0x00), &on_up_6041_00,
+			NULL);
+
   /* USER CODE END 2 */
-
-  /* Initialize led */
-  BSP_LED_Init(LED_GREEN);
-
-  /* Initialize USER push-button, will be used to trigger an interrupt each time it's pressed.*/
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      if (ubKeyNumber == 0x4)
-      {
-        ubKeyNumber = 0x00;
-      }
-      else
-      {
-        //LED_Display(++ubKeyNumber);
+    HAL_Delay(1000);
+	// Update the CAN network clock.
+	clock_gettime(1, &now);
 
-        /* Set the data to be transmitted */
+	  //struct tm *tm_info;
+    //tm_info = localtime(&now.tv_sec);
+    RTC_DateTypeDef gDate;
+    RTC_TimeTypeDef gTime;
+    HAL_RTC_GetTime(&hrtc, &gTime, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &gDate, RTC_FORMAT_BIN);
+  	can_net_set_time(net, &now);
 
-        /* Start the Transmission process */
-        if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData) != HAL_OK)
-        {
-          /* Transmission request Error */
-          Error_Handler();
-        }
-        HAL_Delay(250);
-      }
-    
+	// Process any received CAN frames.
+	struct can_msg msg;
+	int n_frames = can_recv(&msg, 1);
+		if(n_frames !=0)
+		{
+		    // Puffer für die formatierte Ausgabe
+		    char data_str[256]; // Angenommene Puffergröße, die groß genug ist
+		    int offset = 0;
+
+		    // Formatieren der Daten in den String
+		    offset += sprintf(data_str + offset, "  ID: 0x%X", (unsigned int)msg.id);
+		    offset += sprintf(data_str + offset, "  Length: %d", msg.len);
+		    offset += sprintf(data_str + offset, "  Flags: 0x%X\r\n", msg.flags);
+
+		    offset += sprintf(data_str + offset, "  Data: [ ");
+		    for (unsigned int i = 0; i < msg.len; ++i) {
+		        offset += sprintf(data_str + offset, "%02X ", msg.data[i]); // Ausgabe der Daten im Hex-Format
+		    }
+		    sprintf(data_str + offset, "]"); // Füge das abschließende Newline hinzu
+//			trace("Received frame from %s ",data_str);
+			if(can_net_recv(net, &msg) == -1)
+			{
+//				trace("can net receive -1");
+			}
+		}
+   
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-  }
+  }	
+  co_nmt_destroy(nmt);
+	co_dev_destroy(dev);
+	can_net_destroy(net);
   /* USER CODE END 3 */
 }
 
@@ -466,65 +541,158 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/**
-  * @brief  Configures the FDCAN.
-  * @param  None
-  * @retval None
-  */
-static void FDCAN_Config(void)
+static int on_can_send(const struct can_msg *msg, void *data)
 {
-  FDCAN_FilterTypeDef sFilterConfig;
-
-
-  if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
-                                   FDCAN_FILTER_REMOTE, FDCAN_FILTER_REMOTE)
-      != HAL_OK) {
-      return -1;
-  }
-
-  if (HAL_FDCAN_ActivateNotification(&hfdcan1,
-                                     0 | FDCAN_IT_RX_FIFO0_NEW_MESSAGE | FDCAN_IT_RX_FIFO1_NEW_MESSAGE
-                                         | FDCAN_IT_TX_COMPLETE | FDCAN_IT_TX_FIFO_EMPTY | FDCAN_IT_BUS_OFF
-                                         | FDCAN_IT_ARB_PROTOCOL_ERROR | FDCAN_IT_DATA_PROTOCOL_ERROR
-                                         | FDCAN_IT_ERROR_PASSIVE | FDCAN_IT_ERROR_WARNING,
-                                     0xFFFFFFFF)
-      != HAL_OK) {
-      return -1;
-  }
-
-  /* Put CAN module in normal mode */
-      if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
-      {
-    	  return -1;
-      }
+	(void)data;
+	return can_send(msg, 1) == 1 ? 0 : -1;
 }
 
-/**
-  * @brief  Rx FIFO 0 callback.
-  * @param  hfdcan: pointer to an FDCAN_HandleTypeDef structure that contains
-  *         the configuration information for the specified FDCAN.
-  * @param  RxFifo0ITs: indicates which Rx FIFO 0 interrupts are signalled.
-  *         This parameter can be any combination of @arg FDCAN_Rx_Fifo0_Interrupts.
-  * @retval None
-  */
-void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
+static void
+on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data)
 {
-  if((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET)
-        BSP_LED_Toggle(LED_GREEN);
+	(void)data;
 
-  {
-    /* Retrieve Rx messages from RX FIFO0 */
-    if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
-    {
-    Error_Handler();
-    }
+	switch (cs) {
+	case CO_NMT_CS_START:
+		// Reset the TIME indication function, since the service may
+		// have been restarted.
+		co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
+		break;
+	case CO_NMT_CS_STOP:
+		break;
+	case CO_NMT_CS_ENTER_PREOP:
+		co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
+		break;
+	case CO_NMT_CS_RESET_NODE:
+		// Initiate a system reset.
+		exit(0);
+		break;
+	case CO_NMT_CS_RESET_COMM:
+		break;
+	}
+}
 
-    /* Display LEDx */
-    if ((RxHeader.Identifier == 0x321) && (RxHeader.IdType == FDCAN_STANDARD_ID) && (RxHeader.DataLength == FDCAN_DLC_BYTES_2))
-    {
-      ubKeyNumber = RxData[0];
-    }
-  }
+static void
+on_time(co_time_t *time, const struct timespec *tp, void *data)
+{
+	(void)time;
+	(void)data;
+
+	// Update the wall clock, _not_ the monotonic clock used by the CAN
+	// network.
+	clock_settime(CLOCK_REALTIME, tp);
+}
+
+static co_unsigned32_t
+on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
+{
+	assert(sub);
+	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x2000);
+	assert(co_sub_get_subidx(sub) == 0x00);
+	assert(req);
+	// The data pointer can be used to pass user-specified data to the
+	// callback function. It is the last argument passed to
+	// co_sub_set_dn_ind().
+	(void)data;
+
+	co_unsigned32_t ac = 0;
+
+	co_unsigned16_t type = co_sub_get_type(sub);//dd
+	assert(type == CO_DEFTYPE_UNSIGNED32);
+
+	// This callback is invoked for every SDO CAN frame. Unless the value is
+	// too large to be held in memory (for example, during a firmware
+	// update), it is more convenient to wait until the entire value is
+	// received. This is what the following call is designed to do. It
+	// returns -1 with ac == 0 if more CAN frames are pending.
+	union co_val val;
+	if (co_sdo_req_dn_val(req, type, &val, &ac) == -1)
+		return ac;
+
+	// Check if the value is valid.
+/*
+	if (val.u32 != 42) {
+		ac = CO_SDO_AC_PARAM;
+		goto error;
+	}
+*/
+	// TODO: Do something with val.u32.
+//	trace("Received SDO 0x2000:0 : val.u32=[%d]",val.u32);
+	// Write the temporary value to the local object dictionary.
+	co_sub_dn(sub, &val);
+/*
+error:
+	co_val_fini(type, &val);
+	return ac;
+*/
+return ac;
+}
+
+static co_unsigned32_t
+on_up_2001_00(const co_sub_t *sub, struct co_sdo_req *req, void *data)
+{
+	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x2001);
+	assert(co_sub_get_subidx(sub) == 0x00);
+	assert(req);
+	(void)data;
+
+	co_unsigned16_t type = co_sub_get_type(sub);
+	assert(type == CO_DEFTYPE_UNSIGNED32);
+
+	// TODO: Obtain value from somewhere.
+	co_unsigned32_t val = 42;
+
+	// Store the value in the send buffer.
+	co_unsigned32_t ac = 0;
+	co_sdo_req_up_val(req, type, &val, &ac);
+	return ac;
+}
+
+
+
+static co_unsigned32_t on_dn_6040_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
+{
+	assert(sub);
+	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x6040);
+	assert(co_sub_get_subidx(sub) == 0x00);
+	assert(req);
+	(void)data;
+
+	co_unsigned32_t ac = 0;
+
+	co_unsigned16_t type = co_sub_get_type(sub);
+	assert(type == CO_DEFTYPE_UNSIGNED32);
+
+	union co_val val;
+	if (co_sdo_req_dn_val(req, type, &val, &ac) == -1)
+	{
+		return ac;
+	}
+
+	// TODO: Do something with val.u32.
+//	trace("Received SDO 0x6040:0 : val.u32=[%d]",val.u32);
+	// Write the temporary value to the local object dictionary.
+	co_sub_dn(sub, &val);
+	return ac;
+}
+
+static co_unsigned32_t on_up_6041_00(const co_sub_t *sub, struct co_sdo_req *req, void *data)
+{
+	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x6041);
+	assert(co_sub_get_subidx(sub) == 0x00);
+	assert(req);
+	(void)data;
+
+	co_unsigned16_t type = co_sub_get_type(sub);
+	assert(type == CO_DEFTYPE_UNSIGNED32);
+
+	// TODO: Obtain value from somewhere.
+	co_unsigned32_t val = 42;
+
+	// Store the value in the send buffer.
+	co_unsigned32_t ac = 0;
+	co_sdo_req_up_val(req, type, &val, &ac);
+	return ac;
 }
 
 /* USER CODE END 4 */
