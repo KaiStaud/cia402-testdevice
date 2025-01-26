@@ -40,6 +40,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 
 # Füge das Include-Verzeichnis für "LibraryA" hinzu, damit #include <LibraryA/...> funktioniert
 include_directories(
+${CMAKE_SOURCE_DIR}/ThirdParty/lvgl
 ${CMAKE_SOURCE_DIR}/ThirdParty/Include
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Core/Include/
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include/
@@ -53,7 +54,7 @@ file(GLOB_RECURSE LIBRARY_SOURCES
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/lely/*.c
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/lcd/*.c
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/ugui/*.c
-
+    ${CMAKE_SOURCE_DIR}/ThirdParty/lvgl/*.c
     )
 
 add_library(lely-core STATIC ${LIBRARY_SOURCES})

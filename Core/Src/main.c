@@ -30,8 +30,10 @@
 #include <lely/co/co.h>
 #include <lely/bsp/can.h>
 
-#include <lcd/lcd.h>
-#include <ugui/ugui.h>
+//#include <lcd/lcd.h>
+//#include <ugui/ugui.h>
+#include <lvgl.h>
+#include "../../ThirdParty/lvgl/src/drivers/display/st7789/lv_st7789.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +43,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define LCD_H_RES       240
+#define LCD_V_RES       320
+#define BUS_SPI1_POLL_TIMEOUT 0x1000U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -84,6 +89,13 @@ static co_unsigned32_t on_up_2001_00(const co_sub_t *sub,struct co_sdo_req *req,
 static co_unsigned32_t on_dn_6040_00(co_sub_t *sub, struct co_sdo_req *req,void *data);
 static co_unsigned32_t on_up_6041_00(const co_sub_t *sub,struct co_sdo_req *req, void *data);
 extern const struct co_sdev lpc17xx_sdev;
+
+lv_display_t *lcd_disp;
+volatile int lcd_bus_busy = 0;
+
+static void lcd_send_color(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, uint8_t *param, size_t param_size);
+static void lcd_send_cmd(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, const uint8_t *param, size_t param_size);
+static int32_t lcd_io_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -129,6 +141,39 @@ int main(void)
   MX_RTC_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
+        /* Initialize LVGL */
+        lv_init();
+
+        /* Initialize LCD I/O */
+        if (lcd_io_init() != 0)
+                return 0;
+
+        /* Create the LVGL display object and the LCD display driver */
+        lcd_disp = lv_st7789_create(LCD_H_RES, LCD_V_RES, LV_LCD_FLAG_NONE, lcd_send_cmd, lcd_send_color);
+        lv_display_set_rotation(lcd_disp, LV_DISPLAY_ROTATION_0);
+
+        /* Allocate draw buffers on the heap. In this example we use two partial buffers of 1/10th size of the screen */
+        lv_color_t * buf1 = NULL;
+        lv_color_t * buf2 = NULL;
+
+        uint32_t buf_size = LCD_H_RES * LCD_V_RES / 10 * lv_color_format_get_size(lv_display_get_color_format(lcd_disp));
+
+        buf1 = lv_malloc(buf_size);
+        if(buf1 == NULL) {
+                LV_LOG_ERROR("display draw buffer malloc failed");
+                return 0;
+        }
+
+        buf2 = lv_malloc(buf_size);
+        if(buf2 == NULL) {
+                LV_LOG_ERROR("display buffer malloc failed");
+                lv_free(buf1);
+                return 0;
+        }
+        lv_display_set_buffers(lcd_disp, buf1, buf2, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+
+
  //HAL_TIM_Base_Start_IT(&htim7);
   can_init(125);;
 if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
@@ -694,7 +739,82 @@ static co_unsigned32_t on_up_6041_00(const co_sub_t *sub, struct co_sdo_req *req
 	co_sdo_req_up_val(req, type, &val, &ac);
 	return ac;
 }
+void lcd_color_transfer_ready_cb(SPI_HandleTypeDef *hspi)
+{
+        /* CS high */
+        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+        lcd_bus_busy = 0;
+        lv_display_flush_ready(lcd_disp);
+}
 
+/* Initialize LCD I/O bus, reset LCD */
+static int32_t lcd_io_init(void)
+{
+        /* Register SPI Tx Complete Callback */
+        HAL_SPI_RegisterCallback(&hspi2, HAL_SPI_TX_COMPLETE_CB_ID, lcd_color_transfer_ready_cb);
+
+        /* reset LCD */
+        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_RESET);
+        HAL_Delay(100);
+        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_SET);
+        HAL_Delay(100);
+
+        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
+
+        return HAL_OK;
+}
+
+/* Platform-specific implementation of the LCD send command function. In general this should use polling transfer. */
+static void lcd_send_cmd(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, const uint8_t *param, size_t param_size)
+{
+        LV_UNUSED(disp);
+        while (lcd_bus_busy);   /* wait until previous transfer is finished */
+        /* Set the SPI in 8-bit mode */
+        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+        HAL_SPI_Init(&hspi2);
+        /* DCX low (command) */
+        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
+        /* CS low */
+        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
+        /* send command */
+        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
+                /* DCX high (data) */
+                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
+                /* for short data blocks we use polling transfer */
+                HAL_SPI_Transmit(&hspi2, (uint8_t *)param, (uint16_t)param_size, BUS_SPI1_POLL_TIMEOUT);
+                /* CS high */
+                HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
+        }
+}
+
+/* Platform-specific implementation of the LCD send color function. For better performance this should use DMA transfer.
+ * In case of a DMA transfer a callback must be installed to notify LVGL about the end of the transfer.
+ */
+static void lcd_send_color(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, uint8_t *param, size_t param_size)
+{
+        LV_UNUSED(disp);
+        while (lcd_bus_busy);   /* wait until previous transfer is finished */
+        /* Set the SPI in 8-bit mode */
+        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+        HAL_SPI_Init(&hspi2);
+        /* DCX low (command) */
+        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
+        /* CS low */
+        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
+        /* send command */
+        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
+                /* DCX high (data) */
+                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
+                /* for color data use DMA transfer */
+                /* Set the SPI in 16-bit mode to match endianness */
+                hspi2.Init.DataSize = SPI_DATASIZE_16BIT;
+                HAL_SPI_Init(&hspi2);
+                lcd_bus_busy = 1;
+                HAL_SPI_Transmit_DMA(&hspi2, param, (uint16_t)param_size / 2);
+                /* NOTE: CS will be reset in the transfer ready callback */
+        }
+}
 /* USER CODE END 4 */
 
 /**
