@@ -1,12 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
 
-#
-# This file is generated only once,
-# and is not re-generated if converter is called multiple times.
-#
-# User is free to modify the file as much as necessary
-#
-
 # Setup compiler settings
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -40,8 +33,8 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 
 # Füge das Include-Verzeichnis für "LibraryA" hinzu, damit #include <LibraryA/...> funktioniert
 include_directories(
-${CMAKE_SOURCE_DIR}/ThirdParty/lvgl
 ${CMAKE_SOURCE_DIR}/ThirdParty/Include
+${CMAKE_SOURCE_DIR}/Libraries/Include
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Core/Include/
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include/
 ${CMAKE_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc/
@@ -54,10 +47,17 @@ file(GLOB_RECURSE LIBRARY_SOURCES
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/lely/*.c
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/lcd/*.c
     ${CMAKE_SOURCE_DIR}/ThirdParty/Source/ugui/*.c
-    ${CMAKE_SOURCE_DIR}/ThirdParty/lvgl/*.c
-    )
+)
 
 add_library(lely-core STATIC ${LIBRARY_SOURCES})
+
+file(GLOB_RECURSE APP_LIBRARY_SOURCES 
+    ${CMAKE_SOURCE_DIR}/Libraries/Source/ui/*.c
+    ${CMAKE_SOURCE_DIR}/Libraries/Source/cia_402/*.c
+)
+
+add_library(app-core STATIC ${APP_LIBRARY_SOURCES})
+
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
@@ -89,5 +89,6 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
     lely-core
+    app-core
     # Add user defined libraries
 )
