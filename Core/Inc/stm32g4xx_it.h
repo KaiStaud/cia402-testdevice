@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
+  * Copyright (c) 2025 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -58,9 +58,8 @@ void SysTick_Handler(void);
 void DMA1_Channel1_IRQHandler(void);
 void FDCAN1_IT0_IRQHandler(void);
 void FDCAN1_IT1_IRQHandler(void);
-void TIM1_TRG_COM_TIM17_IRQHandler(void);
+void SPI1_IRQHandler(void);
 void EXTI15_10_IRQHandler(void);
-void TIM7_DAC_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

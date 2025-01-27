@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
+  * Copyright (c) 2025 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -29,7 +29,6 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32g4xx_hal.h"
 #include "stm32g4xx_nucleo.h"
-#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -38,9 +37,7 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-extern UART_HandleTypeDef huart2;
-extern RTC_HandleTypeDef hrtc;
-extern FDCAN_HandleTypeDef hfdcan1;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -57,17 +54,10 @@ extern FDCAN_HandleTypeDef hfdcan1;
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-struct hw_time{
-	int ticks_ns;
-	int ticks_ms;
-	int ticks_second;
-	int ticks_minute;
-	int ticks_hour;
-};
-
-struct hw_time clock_get_hw_time();
-
-
+extern FDCAN_HandleTypeDef hfdcan1;
+extern RTC_HandleTypeDef hrtc;
+extern SPI_HandleTypeDef hspi2;
+extern UART_HandleTypeDef huart2;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -81,15 +71,21 @@ struct hw_time clock_get_hw_time();
 #define RCC_OSC_OUT_GPIO_Port GPIOF
 #define SD_CS_Pin GPIO_PIN_4
 #define SD_CS_GPIO_Port GPIOC
+#define LCD_DCX_Pin GPIO_PIN_7
+#define LCD_DCX_GPIO_Port GPIOC
+#define LCD_RESET_Pin GPIO_PIN_9
+#define LCD_RESET_GPIO_Port GPIOA
 #define T_SWDIO_Pin GPIO_PIN_13
 #define T_SWDIO_GPIO_Port GPIOA
 #define T_SWCLK_Pin GPIO_PIN_14
 #define T_SWCLK_GPIO_Port GPIOA
-#define LCD_DCX_Pin GPIO_PIN_3
-#define LCD_DCX_GPIO_Port GPIOB
-#define LCD_RST_Pin GPIO_PIN_4
-#define LCD_RST_GPIO_Port GPIOB
-#define LCD_CS_Pin GPIO_PIN_5
+#define LCD_DCX2_Pin GPIO_PIN_3
+#define LCD_DCX2_GPIO_Port GPIOB
+#define LCD_RST2_Pin GPIO_PIN_4
+#define LCD_RST2_GPIO_Port GPIOB
+#define LCD_CS2_Pin GPIO_PIN_5
+#define LCD_CS2_GPIO_Port GPIOB
+#define LCD_CS_Pin GPIO_PIN_6
 #define LCD_CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
