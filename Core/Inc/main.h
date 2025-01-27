@@ -71,15 +71,21 @@ extern UART_HandleTypeDef huart2;
 #define RCC_OSC_OUT_GPIO_Port GPIOF
 #define SD_CS_Pin GPIO_PIN_4
 #define SD_CS_GPIO_Port GPIOC
+#define LCD_DCX_Pin GPIO_PIN_7
+#define LCD_DCX_GPIO_Port GPIOC
+#define LCD_RESET_Pin GPIO_PIN_9
+#define LCD_RESET_GPIO_Port GPIOA
 #define T_SWDIO_Pin GPIO_PIN_13
 #define T_SWDIO_GPIO_Port GPIOA
 #define T_SWCLK_Pin GPIO_PIN_14
 #define T_SWCLK_GPIO_Port GPIOA
-#define LCD_DCX_Pin GPIO_PIN_3
-#define LCD_DCX_GPIO_Port GPIOB
-#define LCD_RST_Pin GPIO_PIN_4
-#define LCD_RST_GPIO_Port GPIOB
-#define LCD_CS_Pin GPIO_PIN_5
+#define LCD_DCX2_Pin GPIO_PIN_3
+#define LCD_DCX2_GPIO_Port GPIOB
+#define LCD_RST2_Pin GPIO_PIN_4
+#define LCD_RST2_GPIO_Port GPIOB
+#define LCD_CS2_Pin GPIO_PIN_5
+#define LCD_CS2_GPIO_Port GPIOB
+#define LCD_CS_Pin GPIO_PIN_6
 #define LCD_CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */

@@ -30,10 +30,12 @@
 #include <lely/co/co.h>
 #include <lely/bsp/can.h>
 
-//#include <lcd/lcd.h>
-//#include <ugui/ugui.h>
-#include <lvgl.h>
-#include "../../ThirdParty/lvgl/src/drivers/display/st7789/lv_st7789.h"
+#include <cia_402/co_callbacks.h>
+#include <cia_402/co_init.h>
+
+#include <lcd/st7789.h>
+#include <ugui/ugui.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,9 +45,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LCD_H_RES       240
-#define LCD_V_RES       320
-#define BUS_SPI1_POLL_TIMEOUT 0x1000U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,7 +59,9 @@ FDCAN_HandleTypeDef hfdcan1;
 
 RTC_HandleTypeDef hrtc;
 
+SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 UART_HandleTypeDef huart2;
 
@@ -76,26 +78,14 @@ uint8_t TxData[8]={'F','D','C','A','N',1,2,3};
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_FDCAN1_Init(void);
-static void MX_USART2_UART_Init(void);
+static void MX_DMA_Init(void);
 static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_USART2_UART_Init(void);
+static void MX_FDCAN1_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
-static int on_can_send(const struct can_msg *msg, void *data);
-static void on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data);
-static void on_time(co_time_t *time, const struct timespec *tp, void *data);
-static co_unsigned32_t on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req,void *data);
-static co_unsigned32_t on_up_2001_00(const co_sub_t *sub,struct co_sdo_req *req, void *data);
-static co_unsigned32_t on_dn_6040_00(co_sub_t *sub, struct co_sdo_req *req,void *data);
-static co_unsigned32_t on_up_6041_00(const co_sub_t *sub,struct co_sdo_req *req, void *data);
-extern const struct co_sdev lpc17xx_sdev;
 
-lv_display_t *lcd_disp;
-volatile int lcd_bus_busy = 0;
-
-static void lcd_send_color(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, uint8_t *param, size_t param_size);
-static void lcd_send_cmd(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, const uint8_t *param, size_t param_size);
-static int32_t lcd_io_init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -136,44 +126,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_FDCAN1_Init();
-  MX_USART2_UART_Init();
+  MX_DMA_Init();
   MX_RTC_Init();
   MX_SPI2_Init();
+  MX_USART2_UART_Init();
+  MX_FDCAN1_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-        /* Initialize LVGL */
-        lv_init();
-
-        /* Initialize LCD I/O */
-        if (lcd_io_init() != 0)
-                return 0;
-
-        /* Create the LVGL display object and the LCD display driver */
-        lcd_disp = lv_st7789_create(LCD_H_RES, LCD_V_RES, LV_LCD_FLAG_NONE, lcd_send_cmd, lcd_send_color);
-        lv_display_set_rotation(lcd_disp, LV_DISPLAY_ROTATION_0);
-
-        /* Allocate draw buffers on the heap. In this example we use two partial buffers of 1/10th size of the screen */
-        lv_color_t * buf1 = NULL;
-        lv_color_t * buf2 = NULL;
-
-        uint32_t buf_size = LCD_H_RES * LCD_V_RES / 10 * lv_color_format_get_size(lv_display_get_color_format(lcd_disp));
-
-        buf1 = lv_malloc(buf_size);
-        if(buf1 == NULL) {
-                LV_LOG_ERROR("display draw buffer malloc failed");
-                return 0;
-        }
-
-        buf2 = lv_malloc(buf_size);
-        if(buf2 == NULL) {
-                LV_LOG_ERROR("display buffer malloc failed");
-                lv_free(buf1);
-                return 0;
-        }
-        lv_display_set_buffers(lcd_disp, buf1, buf2, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
-
-
-
  //HAL_TIM_Base_Start_IT(&htim7);
   can_init(125);;
 if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
@@ -198,55 +157,9 @@ if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJEC
       return -1;
     }
 
-   /* Start RTC, otherwise CANOpen won't generate Data */
-	// Initialize the CAN network interface.
-	net = can_net_create();
-	assert(net);
-	can_net_set_send_func(net, &on_can_send, NULL);
 
-	// Initialize the CAN network clock. 
-//	struct timespec now = { 0, 0 };
-	clock_gettime(1, &now);
-	can_net_set_time(net, &now);
-
-	// Create a dynamic object dictionary from the static object dictionary.
-	dev = co_dev_create_from_sdev(&lpc17xx_sdev);
-	assert(dev);
-
-	// Create the CANopen NMT service.
-	nmt = co_nmt_create(net, dev);
-	assert(nmt);
-
-	// Start the NMT service by resetting the node.
-	co_nmt_cs_ind(nmt, CO_NMT_CS_RESET_NODE);
-
-	// Set the NMT indication function _after_ the initial reset; otherwise
-	// we create a reset loop.
-	co_nmt_set_cs_ind(nmt, &on_nmt_cs, NULL);
-
-	// Set the TIME indication function. This can only be done when the TIME
-	// service is active.
-	co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
-
-	// Set the download (SDO write) indication function for sub-object
-	// 2000:01.
-	co_sub_set_dn_ind(co_dev_find_sub(dev, 0x2000, 0x00), &on_dn_2000_00,
-			NULL);
-
-	// Set the upload (SDO read) indication function for sub-object 2001:01.
-	co_sub_set_up_ind(co_dev_find_sub(dev, 0x2001, 0x00), &on_up_2001_00,
-			NULL);
-
-
-	// Set the download (SDO write) indication function for sub-object
-	// 2000:01.
-	co_sub_set_dn_ind(co_dev_find_sub(dev, 0x6040, 0x00), &on_dn_6040_00,
-			NULL);
-
-	// Set the upload (SDO read) indication function for sub-object 2001:01.
-	co_sub_set_up_ind(co_dev_find_sub(dev, 0x6041, 0x00), &on_up_6041_00,
-			NULL);
-
+  ST7789_Init();
+  ST7789_Test();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -457,6 +370,46 @@ static void MX_RTC_Init(void)
 }
 
 /**
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
+
+  /* USER CODE BEGIN SPI1_Init 0 */
+
+  /* USER CODE END SPI1_Init 0 */
+
+  /* USER CODE BEGIN SPI1_Init 1 */
+
+  /* USER CODE END SPI1_Init 1 */
+  /* SPI1 parameter configuration*/
+  hspi1.Instance = SPI1;
+  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi1.Init.NSS = SPI_NSS_SOFT;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi1.Init.CRCPolynomial = 7;
+  hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI1_Init 2 */
+
+  /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
   * @brief SPI2 Initialization Function
   * @param None
   * @retval None
@@ -545,6 +498,23 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -562,20 +532,30 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, SD_CS_Pin|LCD_DCX_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LCD_DCX_Pin|LCD_RST_Pin|LCD_CS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : SD_CS_Pin */
-  GPIO_InitStruct.Pin = SD_CS_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, LCD_DCX2_Pin|LCD_RST2_Pin|LCD_CS2_Pin|LCD_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : SD_CS_Pin LCD_DCX_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin|LCD_DCX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SD_CS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LCD_DCX_Pin LCD_RST_Pin LCD_CS_Pin */
-  GPIO_InitStruct.Pin = LCD_DCX_Pin|LCD_RST_Pin|LCD_CS_Pin;
+  /*Configure GPIO pin : LCD_RESET_Pin */
+  GPIO_InitStruct.Pin = LCD_RESET_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LCD_RESET_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LCD_DCX2_Pin LCD_RST2_Pin LCD_CS2_Pin LCD_CS_Pin */
+  GPIO_InitStruct.Pin = LCD_DCX2_Pin|LCD_RST2_Pin|LCD_CS2_Pin|LCD_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -586,235 +566,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static int on_can_send(const struct can_msg *msg, void *data)
-{
-	(void)data;
-	return can_send(msg, 1) == 1 ? 0 : -1;
-}
 
-static void
-on_nmt_cs(co_nmt_t *nmt, co_unsigned8_t cs, void *data)
-{
-	(void)data;
-
-	switch (cs) {
-	case CO_NMT_CS_START:
-		// Reset the TIME indication function, since the service may
-		// have been restarted.
-		co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
-		break;
-	case CO_NMT_CS_STOP:
-		break;
-	case CO_NMT_CS_ENTER_PREOP:
-		co_time_set_ind(co_nmt_get_time(nmt), &on_time, NULL);
-		break;
-	case CO_NMT_CS_RESET_NODE:
-		// Initiate a system reset.
-		exit(0);
-		break;
-	case CO_NMT_CS_RESET_COMM:
-		break;
-	}
-}
-
-static void
-on_time(co_time_t *time, const struct timespec *tp, void *data)
-{
-	(void)time;
-	(void)data;
-
-	// Update the wall clock, _not_ the monotonic clock used by the CAN
-	// network.
-	clock_settime(CLOCK_REALTIME, tp);
-}
-
-static co_unsigned32_t
-on_dn_2000_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
-{
-	assert(sub);
-	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x2000);
-	assert(co_sub_get_subidx(sub) == 0x00);
-	assert(req);
-	// The data pointer can be used to pass user-specified data to the
-	// callback function. It is the last argument passed to
-	// co_sub_set_dn_ind().
-	(void)data;
-
-	co_unsigned32_t ac = 0;
-
-	co_unsigned16_t type = co_sub_get_type(sub);//dd
-	assert(type == CO_DEFTYPE_UNSIGNED32);
-
-	// This callback is invoked for every SDO CAN frame. Unless the value is
-	// too large to be held in memory (for example, during a firmware
-	// update), it is more convenient to wait until the entire value is
-	// received. This is what the following call is designed to do. It
-	// returns -1 with ac == 0 if more CAN frames are pending.
-	union co_val val;
-	if (co_sdo_req_dn_val(req, type, &val, &ac) == -1)
-		return ac;
-
-	// Check if the value is valid.
-/*
-	if (val.u32 != 42) {
-		ac = CO_SDO_AC_PARAM;
-		goto error;
-	}
-*/
-	// TODO: Do something with val.u32.
-//	trace("Received SDO 0x2000:0 : val.u32=[%d]",val.u32);
-	// Write the temporary value to the local object dictionary.
-	co_sub_dn(sub, &val);
-/*
-error:
-	co_val_fini(type, &val);
-	return ac;
-*/
-return ac;
-}
-
-static co_unsigned32_t
-on_up_2001_00(const co_sub_t *sub, struct co_sdo_req *req, void *data)
-{
-	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x2001);
-	assert(co_sub_get_subidx(sub) == 0x00);
-	assert(req);
-	(void)data;
-
-	co_unsigned16_t type = co_sub_get_type(sub);
-	assert(type == CO_DEFTYPE_UNSIGNED32);
-
-	// TODO: Obtain value from somewhere.
-	co_unsigned32_t val = 42;
-
-	// Store the value in the send buffer.
-	co_unsigned32_t ac = 0;
-	co_sdo_req_up_val(req, type, &val, &ac);
-	return ac;
-}
-
-
-
-static co_unsigned32_t on_dn_6040_00(co_sub_t *sub, struct co_sdo_req *req, void *data)
-{
-	assert(sub);
-	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x6040);
-	assert(co_sub_get_subidx(sub) == 0x00);
-	assert(req);
-	(void)data;
-
-	co_unsigned32_t ac = 0;
-
-	co_unsigned16_t type = co_sub_get_type(sub);
-	assert(type == CO_DEFTYPE_UNSIGNED32);
-
-	union co_val val;
-	if (co_sdo_req_dn_val(req, type, &val, &ac) == -1)
-	{
-		return ac;
-	}
-
-	// TODO: Do something with val.u32.
-//	trace("Received SDO 0x6040:0 : val.u32=[%d]",val.u32);
-	// Write the temporary value to the local object dictionary.
-	co_sub_dn(sub, &val);
-	return ac;
-}
-
-static co_unsigned32_t on_up_6041_00(const co_sub_t *sub, struct co_sdo_req *req, void *data)
-{
-	assert(co_obj_get_idx(co_sub_get_obj(sub)) == 0x6041);
-	assert(co_sub_get_subidx(sub) == 0x00);
-	assert(req);
-	(void)data;
-
-	co_unsigned16_t type = co_sub_get_type(sub);
-	assert(type == CO_DEFTYPE_UNSIGNED32);
-
-	// TODO: Obtain value from somewhere.
-	co_unsigned32_t val = 42;
-
-	// Store the value in the send buffer.
-	co_unsigned32_t ac = 0;
-	co_sdo_req_up_val(req, type, &val, &ac);
-	return ac;
-}
-void lcd_color_transfer_ready_cb(SPI_HandleTypeDef *hspi)
-{
-        /* CS high */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        lcd_bus_busy = 0;
-        lv_display_flush_ready(lcd_disp);
-}
-
-/* Initialize LCD I/O bus, reset LCD */
-static int32_t lcd_io_init(void)
-{
-        /* Register SPI Tx Complete Callback */
-        HAL_SPI_RegisterCallback(&hspi2, HAL_SPI_TX_COMPLETE_CB_ID, lcd_color_transfer_ready_cb);
-
-        /* reset LCD */
-        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_RESET);
-        HAL_Delay(100);
-        HAL_GPIO_WritePin(LCD_RST_GPIO_Port, LCD_RST_Pin, GPIO_PIN_SET);
-        HAL_Delay(100);
-
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-
-        return HAL_OK;
-}
-
-/* Platform-specific implementation of the LCD send command function. In general this should use polling transfer. */
-static void lcd_send_cmd(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, const uint8_t *param, size_t param_size)
-{
-        LV_UNUSED(disp);
-        while (lcd_bus_busy);   /* wait until previous transfer is finished */
-        /* Set the SPI in 8-bit mode */
-        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-        HAL_SPI_Init(&hspi2);
-        /* DCX low (command) */
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
-        /* CS low */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
-        /* send command */
-        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
-                /* DCX high (data) */
-                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-                /* for short data blocks we use polling transfer */
-                HAL_SPI_Transmit(&hspi2, (uint8_t *)param, (uint16_t)param_size, BUS_SPI1_POLL_TIMEOUT);
-                /* CS high */
-                HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_SET);
-        }
-}
-
-/* Platform-specific implementation of the LCD send color function. For better performance this should use DMA transfer.
- * In case of a DMA transfer a callback must be installed to notify LVGL about the end of the transfer.
- */
-static void lcd_send_color(lv_display_t *disp, const uint8_t *cmd, size_t cmd_size, uint8_t *param, size_t param_size)
-{
-        LV_UNUSED(disp);
-        while (lcd_bus_busy);   /* wait until previous transfer is finished */
-        /* Set the SPI in 8-bit mode */
-        hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-        HAL_SPI_Init(&hspi2);
-        /* DCX low (command) */
-        HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_RESET);
-        /* CS low */
-        HAL_GPIO_WritePin(LCD_CS_GPIO_Port, LCD_CS_Pin, GPIO_PIN_RESET);
-        /* send command */
-        if (HAL_SPI_Transmit(&hspi2, cmd, cmd_size, BUS_SPI1_POLL_TIMEOUT) == HAL_OK) {
-                /* DCX high (data) */
-                HAL_GPIO_WritePin(LCD_DCX_GPIO_Port, LCD_DCX_Pin, GPIO_PIN_SET);
-                /* for color data use DMA transfer */
-                /* Set the SPI in 16-bit mode to match endianness */
-                hspi2.Init.DataSize = SPI_DATASIZE_16BIT;
-                HAL_SPI_Init(&hspi2);
-                lcd_bus_busy = 1;
-                HAL_SPI_Transmit_DMA(&hspi2, param, (uint16_t)param_size / 2);
-                /* NOTE: CS will be reset in the transfer ready callback */
-        }
-}
 /* USER CODE END 4 */
 
 /**

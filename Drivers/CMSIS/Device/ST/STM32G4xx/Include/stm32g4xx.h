@@ -65,10 +65,10 @@
   /* #define STM32G414xx */   /*!< STM32G414xx Devices */
   /* #define STM32G431xx */   /*!< STM32G431xx Devices */
   /* #define STM32G441xx */   /*!< STM32G441xx Devices */
-  /* #define STM32G471xx */   /*!< STM32G471xx Devices */
+   #define STM32G471xx    /*!< STM32G471xx Devices */
   /* #define STM32G473xx */   /*!< STM32G473xx Devices */
   /* #define STM32G483xx */   /*!< STM32G483xx Devices */
-   #define STM32G474xx    /*!< STM32G474xx Devices */
+  /* #define STM32G474xx */   /*!< STM32G474xx Devices */
   /* #define STM32G484xx */   /*!< STM32G484xx Devices */
   /* #define STM32G491xx */   /*!< STM32G491xx Devices */
   /* #define STM32G4A1xx */   /*!< STM32G4A1xx Devices */
