@@ -159,7 +159,17 @@ if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJEC
 
 
   ST7789_Init();
-  ST7789_Test();
+	ST7789_Fill_Color(WHITE);
+  ST7789_Fill(0,0,239, 40, LGRAY);
+	ST7789_WriteString(10, 20, "CIA402 Tester", Font_11x18, BLACK, LGRAY);
+  ST7789_WriteString(10, 40, "Status Word", Font_11x18, BLACK, WHITE);
+	ST7789_WriteString(10, 60, "Control Word", Font_11x18, BLACK, WHITE);
+	ST7789_WriteString(10, 80, "Target Position", Font_11x18, BLACK, WHITE);
+	ST7789_WriteString(10, 100, "Actual Position", Font_11x18, BLACK, WHITE);
+	ST7789_WriteString(10, 280, "System Op-Mode", Font_11x18, BLACK, WHITE);
+	ST7789_WriteString(10, 300, "System Error", Font_11x18, BLACK, WHITE);
+
+  //ST7789_Test();
   /* USER CODE END 2 */
 
   /* Infinite loop */
