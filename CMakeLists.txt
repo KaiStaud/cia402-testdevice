@@ -35,6 +35,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 include_directories(
 ${CMAKE_SOURCE_DIR}/ThirdParty/Include
 ${CMAKE_SOURCE_DIR}/Libraries/Include
+${CMAKE_SOURCE_DIR}/Libraries/Include
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Core/Include/
 ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include/
 ${CMAKE_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc/
@@ -54,9 +55,11 @@ add_library(lely-core STATIC ${LIBRARY_SOURCES})
 file(GLOB_RECURSE APP_LIBRARY_SOURCES 
     ${CMAKE_SOURCE_DIR}/Libraries/Source/ui/*.c
     ${CMAKE_SOURCE_DIR}/Libraries/Source/cia_402/*.c
+    ${CMAKE_SOURCE_DIR}/Libraries/Source/profile_generators/*.c
 )
 
 add_library(app-core STATIC ${APP_LIBRARY_SOURCES})
+target_link_libraries(app-core lely-core)
 
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
