@@ -58,11 +58,16 @@
 
 FDCAN_HandleTypeDef hfdcan1;
 
+I2C_HandleTypeDef hi2c3;
+DMA_HandleTypeDef hdma_i2c3_rx;
+DMA_HandleTypeDef hdma_i2c3_tx;
+
 RTC_HandleTypeDef hrtc;
 
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi1_tx;
+DMA_HandleTypeDef hdma_spi1_rx;
 
 UART_HandleTypeDef huart2;
 
@@ -87,6 +92,7 @@ static void MX_RTC_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_FDCAN1_Init(void);
+static void MX_I2C3_Init(void);
 static void MX_SPI1_Init(void);
 void StartDefaultTask(void const * argument);
 void DisplayTask(void const * argument);
@@ -139,6 +145,7 @@ int main(void)
   MX_SPI2_Init();
   MX_USART2_UART_Init();
   MX_FDCAN1_Init();
+  MX_I2C3_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   ST7789_Init();
@@ -373,6 +380,54 @@ static void MX_FDCAN1_Init(void)
 }
 
 /**
+  * @brief I2C3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C3_Init(void)
+{
+
+  /* USER CODE BEGIN I2C3_Init 0 */
+
+  /* USER CODE END I2C3_Init 0 */
+
+  /* USER CODE BEGIN I2C3_Init 1 */
+
+  /* USER CODE END I2C3_Init 1 */
+  hi2c3.Instance = I2C3;
+  hi2c3.Init.Timing = 0x40B285C2;
+  hi2c3.Init.OwnAddress1 = 0;
+  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c3.Init.OwnAddress2 = 0;
+  hi2c3.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c3, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c3, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C3_Init 2 */
+
+  /* USER CODE END I2C3_Init 2 */
+
+}
+
+/**
   * @brief RTC Initialization Function
   * @param None
   * @retval None
@@ -580,6 +635,15 @@ static void MX_DMA_Init(void)
   /* DMA1_Channel1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+  /* DMA1_Channel4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
 
 }
 
@@ -601,7 +665,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, SD_CS_Pin|LCD_DCX_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, SD_CS_Pin|TP_RESEST_Pin|LCD_DCX_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LCD_RESET_GPIO_Port, LCD_RESET_Pin, GPIO_PIN_RESET);
@@ -609,12 +673,18 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LCD_DCX2_Pin|LCD_RST2_Pin|LCD_CS2_Pin|LCD_CS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : SD_CS_Pin LCD_DCX_Pin */
-  GPIO_InitStruct.Pin = SD_CS_Pin|LCD_DCX_Pin;
+  /*Configure GPIO pins : SD_CS_Pin TP_RESEST_Pin LCD_DCX_Pin */
+  GPIO_InitStruct.Pin = SD_CS_Pin|TP_RESEST_Pin|LCD_DCX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : TP_INT_Pin */
+  GPIO_InitStruct.Pin = TP_INT_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(TP_INT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LCD_RESET_Pin */
   GPIO_InitStruct.Pin = LCD_RESET_Pin;

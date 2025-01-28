@@ -23,7 +23,13 @@
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
+extern DMA_HandleTypeDef hdma_i2c3_rx;
+
+extern DMA_HandleTypeDef hdma_i2c3_tx;
+
 extern DMA_HandleTypeDef hdma_spi1_tx;
+
+extern DMA_HandleTypeDef hdma_spi1_rx;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
@@ -170,6 +176,132 @@ void HAL_FDCAN_MspDeInit(FDCAN_HandleTypeDef* hfdcan)
 }
 
 /**
+* @brief I2C MSP Initialization
+* This function configures the hardware resources used in this example
+* @param hi2c: I2C handle pointer
+* @retval None
+*/
+void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+  if(hi2c->Instance==I2C3)
+  {
+  /* USER CODE BEGIN I2C3_MspInit 0 */
+
+  /* USER CODE END I2C3_MspInit 0 */
+
+  /** Initializes the peripherals clocks
+  */
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C3;
+    PeriphClkInit.I2c3ClockSelection = RCC_I2C3CLKSOURCE_PCLK1;
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    /**I2C3 GPIO Configuration
+    PC8     ------> I2C3_SCL
+    PC9     ------> I2C3_SDA
+    */
+    GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF8_I2C3;
+    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+    /* Peripheral clock enable */
+    __HAL_RCC_I2C3_CLK_ENABLE();
+
+    /* I2C3 DMA Init */
+    /* I2C3_RX Init */
+    hdma_i2c3_rx.Instance = DMA1_Channel1;
+    hdma_i2c3_rx.Init.Request = DMA_REQUEST_I2C3_RX;
+    hdma_i2c3_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_i2c3_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_i2c3_rx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_i2c3_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_i2c3_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_i2c3_rx.Init.Mode = DMA_NORMAL;
+    hdma_i2c3_rx.Init.Priority = DMA_PRIORITY_LOW;
+    if (HAL_DMA_Init(&hdma_i2c3_rx) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    __HAL_LINKDMA(hi2c,hdmarx,hdma_i2c3_rx);
+
+    /* I2C3_TX Init */
+    hdma_i2c3_tx.Instance = DMA1_Channel2;
+    hdma_i2c3_tx.Init.Request = DMA_REQUEST_I2C3_TX;
+    hdma_i2c3_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
+    hdma_i2c3_tx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_i2c3_tx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_i2c3_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_i2c3_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_i2c3_tx.Init.Mode = DMA_NORMAL;
+    hdma_i2c3_tx.Init.Priority = DMA_PRIORITY_LOW;
+    if (HAL_DMA_Init(&hdma_i2c3_tx) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    __HAL_LINKDMA(hi2c,hdmatx,hdma_i2c3_tx);
+
+    /* I2C3 interrupt Init */
+    HAL_NVIC_SetPriority(I2C3_EV_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(I2C3_EV_IRQn);
+    HAL_NVIC_SetPriority(I2C3_ER_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(I2C3_ER_IRQn);
+  /* USER CODE BEGIN I2C3_MspInit 1 */
+
+  /* USER CODE END I2C3_MspInit 1 */
+
+  }
+
+}
+
+/**
+* @brief I2C MSP De-Initialization
+* This function freeze the hardware resources used in this example
+* @param hi2c: I2C handle pointer
+* @retval None
+*/
+void HAL_I2C_MspDeInit(I2C_HandleTypeDef* hi2c)
+{
+  if(hi2c->Instance==I2C3)
+  {
+  /* USER CODE BEGIN I2C3_MspDeInit 0 */
+
+  /* USER CODE END I2C3_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_I2C3_CLK_DISABLE();
+
+    /**I2C3 GPIO Configuration
+    PC8     ------> I2C3_SCL
+    PC9     ------> I2C3_SDA
+    */
+    HAL_GPIO_DeInit(GPIOC, GPIO_PIN_8);
+
+    HAL_GPIO_DeInit(GPIOC, GPIO_PIN_9);
+
+    /* I2C3 DMA DeInit */
+    HAL_DMA_DeInit(hi2c->hdmarx);
+    HAL_DMA_DeInit(hi2c->hdmatx);
+
+    /* I2C3 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(I2C3_EV_IRQn);
+    HAL_NVIC_DisableIRQ(I2C3_ER_IRQn);
+  /* USER CODE BEGIN I2C3_MspDeInit 1 */
+
+  /* USER CODE END I2C3_MspDeInit 1 */
+  }
+
+}
+
+/**
 * @brief RTC MSP Initialization
 * This function configures the hardware resources used in this example
 * @param hrtc: RTC handle pointer
@@ -247,9 +379,10 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
     __HAL_RCC_GPIOA_CLK_ENABLE();
     /**SPI1 GPIO Configuration
     PA5     ------> SPI1_SCK
+    PA6     ------> SPI1_MISO
     PA7     ------> SPI1_MOSI
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_7;
+    GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -258,7 +391,7 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 
     /* SPI1 DMA Init */
     /* SPI1_TX Init */
-    hdma_spi1_tx.Instance = DMA1_Channel1;
+    hdma_spi1_tx.Instance = DMA1_Channel3;
     hdma_spi1_tx.Init.Request = DMA_REQUEST_SPI1_TX;
     hdma_spi1_tx.Init.Direction = DMA_MEMORY_TO_PERIPH;
     hdma_spi1_tx.Init.PeriphInc = DMA_PINC_DISABLE;
@@ -266,13 +399,30 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
     hdma_spi1_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
     hdma_spi1_tx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
     hdma_spi1_tx.Init.Mode = DMA_NORMAL;
-    hdma_spi1_tx.Init.Priority = DMA_PRIORITY_HIGH;
+    hdma_spi1_tx.Init.Priority = DMA_PRIORITY_LOW;
     if (HAL_DMA_Init(&hdma_spi1_tx) != HAL_OK)
     {
       Error_Handler();
     }
 
     __HAL_LINKDMA(hspi,hdmatx,hdma_spi1_tx);
+
+    /* SPI1_RX Init */
+    hdma_spi1_rx.Instance = DMA1_Channel4;
+    hdma_spi1_rx.Init.Request = DMA_REQUEST_SPI1_RX;
+    hdma_spi1_rx.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_spi1_rx.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_spi1_rx.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_spi1_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
+    hdma_spi1_rx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
+    hdma_spi1_rx.Init.Mode = DMA_NORMAL;
+    hdma_spi1_rx.Init.Priority = DMA_PRIORITY_LOW;
+    if (HAL_DMA_Init(&hdma_spi1_rx) != HAL_OK)
+    {
+      Error_Handler();
+    }
+
+    __HAL_LINKDMA(hspi,hdmarx,hdma_spi1_rx);
 
     /* SPI1 interrupt Init */
     HAL_NVIC_SetPriority(SPI1_IRQn, 5, 0);
@@ -327,12 +477,14 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* hspi)
 
     /**SPI1 GPIO Configuration
     PA5     ------> SPI1_SCK
+    PA6     ------> SPI1_MISO
     PA7     ------> SPI1_MOSI
     */
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_5|GPIO_PIN_7);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7);
 
     /* SPI1 DMA DeInit */
     HAL_DMA_DeInit(hspi->hdmatx);
+    HAL_DMA_DeInit(hspi->hdmarx);
 
     /* SPI1 interrupt DeInit */
     HAL_NVIC_DisableIRQ(SPI1_IRQn);

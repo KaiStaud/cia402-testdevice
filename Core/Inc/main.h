@@ -71,6 +71,10 @@ extern UART_HandleTypeDef huart2;
 #define RCC_OSC_OUT_GPIO_Port GPIOF
 #define SD_CS_Pin GPIO_PIN_4
 #define SD_CS_GPIO_Port GPIOC
+#define TP_RESEST_Pin GPIO_PIN_5
+#define TP_RESEST_GPIO_Port GPIOC
+#define TP_INT_Pin GPIO_PIN_6
+#define TP_INT_GPIO_Port GPIOC
 #define LCD_DCX_Pin GPIO_PIN_7
 #define LCD_DCX_GPIO_Port GPIOC
 #define LCD_RESET_Pin GPIO_PIN_9
