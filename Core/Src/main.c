@@ -94,7 +94,7 @@ struct timespec now = { 0, 0 };
 co_dev_t *dev;
 co_nmt_t *nmt;
 can_net_t *net;
-
+extern const struct co_sdev lpc17xx_sdev;
 /* USER CODE END 0 */
 
 /**
@@ -133,6 +133,8 @@ int main(void)
   MX_FDCAN1_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
+  ST7789_Init();
+  ST7789_Test();
  //HAL_TIM_Base_Start_IT(&htim7);
   can_init(125);;
 if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJECT,
@@ -156,6 +158,11 @@ if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0, FDCAN_REJEC
     {
       return -1;
     }
+
+  net = co_init_net();
+  dev = co_create_dev(lpc17xx_sdev);
+  nmt = co_create_nmt(dev,net);
+
 
 
   ST7789_Init();

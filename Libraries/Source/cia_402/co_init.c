@@ -2,6 +2,20 @@
 #include <cia_402/co_callbacks.h>
 
 
+struct can_net_t* co_init_net()
+{
+	// Initialize the CAN network interface.
+	can_net_t* net = can_net_create();
+	assert(net);
+	can_net_set_send_func(net, &on_can_send, NULL);
+
+	// Initialize the CAN network clock. We use the monotonic clock, since
+	// its reference will not be changed by clock_settime().
+	struct timespec now = { 0, 0 };
+	clock_gettime(1, &now);
+	can_net_set_time(net, &now);
+}
+
 struct co_dev_t* co_create_dev(const struct co_sdev lpc17xx_sdev)
 {
 	// Create a dynamic object dictionary from the static object dictionary.
@@ -19,19 +33,6 @@ struct co_nmt_t* co_create_nmt(co_dev_t* dev,can_net_t* net)
 }
 struct can_net_t* co_add_indication_cb(co_dev_t *dev,co_nmt_t *nmt)
 {
-	struct timespec now;
-	// Initialize the CAN network interface.
-	struct can_net_t* net = can_net_create();
-	assert(net);
-	can_net_set_send_func(net, &on_can_send, NULL);
-
-	// Initialize the CAN network clock. 
-//	struct timespec now = { 0, 0 };
-	clock_gettime(1, &now);
-	can_net_set_time(net, &now);
-
-//... Todo 
-
 	// Start the NMT service by resetting the node.
 	co_nmt_cs_ind(nmt, CO_NMT_CS_RESET_NODE);
 
@@ -51,7 +52,6 @@ struct can_net_t* co_add_indication_cb(co_dev_t *dev,co_nmt_t *nmt)
 	// Set the upload (SDO read) indication function for sub-object 2001:01.
 	co_sub_set_up_ind(co_dev_find_sub(dev, 0x2001, 0x00), &on_up_2001_00,
 			NULL);
-
 
 	// Set the download (SDO write) indication function for sub-object
 	// 2000:01.
